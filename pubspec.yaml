@@ -1,0 +1,73 @@
+name: privacy_vpn_controller
+description: "Privacy-first VPN/Proxy Controller for Android - Zero logging, no tracking, instant connectivity"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.6.0
+  riverpod_annotation: ^2.6.0
+
+  # UI & Material Design
+  dynamic_color: ^1.7.0
+  flutter_animate: ^4.5.0
+  
+  # Secure Storage & Encryption
+  flutter_secure_storage: ^9.2.0
+  encrypt: ^5.0.1
+  crypto: ^3.0.3
+  
+  # Network & HTTP
+  dio: ^5.4.0
+  connectivity_plus: ^6.0.0
+  
+  # File Management
+  path_provider: ^2.1.2
+  file_picker: ^8.1.2
+  
+  # Permissions
+  permission_handler: ^11.3.0
+  
+  # Location Services  
+  geolocator: ^11.0.0
+  
+  # JSON Serialization
+  json_annotation: ^4.9.0
+  
+  # QR Code & Camera
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^3.5.2
+  
+  # Utility
+  uuid: ^4.3.3
+  intl: ^0.19.0
+  logger: ^2.0.2+1
+  
+  # Device Info
+  device_info_plus: ^12.3.0
+  package_info_plus: ^9.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  
+  # Code Generation
+  build_runner: ^2.4.7
+  riverpod_generator: ^2.3.9
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/json/
