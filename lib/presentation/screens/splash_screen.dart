@@ -54,7 +54,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (context) => const ControlScreen(),
+            builder: (context) => ControlScreen(),
           ),
         );
       }
