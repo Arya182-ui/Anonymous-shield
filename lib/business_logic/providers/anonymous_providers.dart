@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/anonymous_chain.dart';
+import '../../data/models/connection_status.dart';
 import '../../business_logic/services/anonymous_chain_service.dart';
+import '../managers/vpn_manager.dart';
+import '../managers/proxy_manager.dart';
 
 // Current active anonymous chain
 final activeAnonymousChainProvider = StateNotifierProvider<ActiveAnonymousChainNotifier, AnonymousChain?>((ref) {
@@ -15,6 +18,28 @@ final anonymousModesProvider = Provider<List<AnonymousMode>>((ref) {
 // Anonymous chain service
 final anonymousChainServiceProvider = Provider<AnonymousChainService>((ref) {
   return AnonymousChainService();
+});
+
+// VPN Manager provider
+final vpnManagerProvider = Provider<VpnManager>((ref) {
+  return VpnManager();
+});
+
+// Proxy Manager provider
+final proxyManagerProvider = Provider<ProxyManager>((ref) {
+  return ProxyManager();
+});
+
+// VPN status stream provider
+final vpnStatusProvider = StreamProvider<ConnectionStatus>((ref) {
+  final vpnManager = ref.watch(vpnManagerProvider);
+  return vpnManager.statusStream;
+});
+
+// Proxy status stream provider
+final proxyStatusProvider = StreamProvider<ProxyStatus>((ref) {
+  final proxyManager = ref.watch(proxyManagerProvider);
+  return proxyManager.statusStream;
 });
 
 // Quick access to predefined chains

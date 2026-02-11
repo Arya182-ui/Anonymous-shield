@@ -26,9 +26,31 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         
+        // Security configuration
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["allowBackup"] = "false"
+        
         // NDK configuration for WireGuard native libraries
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    // Signing configurations for release builds
+    signingConfigs {
+        create("release") {
+            // Use environment variables or gradle.properties for sensitive data
+            // Example: KEYSTORE_FILE=/path/to/keystore.jks
+            // KEYSTORE_PASSWORD=your_keystore_password  
+            // KEY_ALIAS=your_key_alias
+            // KEY_PASSWORD=your_key_password
+            
+            if (project.hasProperty("KEYSTORE_FILE")) {
+                storeFile = file(project.property("KEYSTORE_FILE") as String)
+                storePassword = project.property("KEYSTORE_PASSWORD") as String
+                keyAlias = project.property("KEY_ALIAS") as String
+                keyPassword = project.property("KEY_PASSWORD") as String
+            }
         }
     }
 
@@ -36,6 +58,8 @@ android {
         debug {
             isDebuggable = true
             isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-DEBUG"
         }
         
         release {
@@ -43,14 +67,26 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             
+            // Security: Enable R8 full mode for maximum obfuscation
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
             
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use release signing config if available, fallback to debug for development
+            signingConfig = if (project.hasProperty("KEYSTORE_FILE")) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+        
+        // Optional: Create a staging build type for testing production features
+        create("staging") {
+            initWith(getByName("release"))
+            isDebuggable = true
+            applicationIdSuffix = ".staging"
+            versionNameSuffix = "-STAGING"
         }
     }
     

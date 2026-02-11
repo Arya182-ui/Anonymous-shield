@@ -14,6 +14,10 @@ import 'data/storage/secure_storage.dart';
 import 'platform/channels/vpn_channel.dart';
 import 'platform/channels/proxy_channel.dart';
 
+// Business logic imports
+import 'business_logic/managers/vpn_manager.dart';
+import 'business_logic/managers/proxy_manager.dart';
+
 // Presentation imports
 import 'presentation/screens/splash_screen.dart';
 
@@ -57,6 +61,16 @@ void main() async {
     final proxyChannel = ProxyMethodChannel();
     await proxyChannel.initialize();
     logger.i('Proxy method channel initialized');
+    
+    // Initialize VPN manager
+    final vpnManager = VpnManager();
+    await vpnManager.initialize();
+    logger.i('VPN manager initialized');
+    
+    // Initialize proxy manager
+    final proxyManager = ProxyManager();
+    await proxyManager.initialize();
+    logger.i('Proxy manager initialized');
     
     // Set system UI overlay style (dark status bar)
     SystemChrome.setSystemUIOverlayStyle(

@@ -13,6 +13,7 @@ import com.privacyvpn.privacy_vpn_controller.proxy.ProxyService
 import com.privacyvpn.privacy_vpn_controller.channels.VpnMethodChannelHandler
 import com.privacyvpn.privacy_vpn_controller.channels.ProxyMethodChannelHandler
 import com.privacyvpn.privacy_vpn_controller.channels.SystemMethodChannelHandler
+import com.privacyvpn.privacy_vpn_controller.channels.PerformanceMethodChannelHandler
 
 class MainActivity : FlutterActivity() {
     
@@ -20,16 +21,19 @@ class MainActivity : FlutterActivity() {
         private const val VPN_CHANNEL = "com.privacyvpn.vpn_controller/vpn"
         private const val PROXY_CHANNEL = "com.privacyvpn.vpn_controller/proxy"
         private const val SYSTEM_CHANNEL = "com.privacyvpn.vpn_controller/system"
+        private const val PERFORMANCE_CHANNEL = "privacy_vpn_controller/performance"
         private const val VPN_PERMISSION_REQUEST = 1001
     }
     
     private lateinit var vpnMethodChannel: MethodChannel
     private lateinit var proxyMethodChannel: MethodChannel
     private lateinit var systemMethodChannel: MethodChannel
+    private lateinit var performanceMethodChannel: MethodChannel
     
     private lateinit var vpnChannelHandler: VpnMethodChannelHandler
     private lateinit var proxyChannelHandler: ProxyMethodChannelHandler
     private lateinit var systemChannelHandler: SystemMethodChannelHandler
+    private lateinit var performanceChannelHandler: PerformanceMethodChannelHandler
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,11 +55,13 @@ class MainActivity : FlutterActivity() {
         vpnMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VPN_CHANNEL)
         proxyMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PROXY_CHANNEL)  
         systemMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SYSTEM_CHANNEL)
+        performanceMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PERFORMANCE_CHANNEL)
         
         // Initialize channel handlers
         vpnChannelHandler = VpnMethodChannelHandler(this, vpnMethodChannel)
         proxyChannelHandler = ProxyMethodChannelHandler(this, proxyMethodChannel)
         systemChannelHandler = SystemMethodChannelHandler(this, systemMethodChannel)
+        performanceChannelHandler = PerformanceMethodChannelHandler(this, performanceMethodChannel)
         
         // Set VPN channel notifier
         com.privacyvpn.privacy_vpn_controller.vpn.VpnChannelNotifier.setChannelHandler(vpnChannelHandler)
@@ -64,6 +70,7 @@ class MainActivity : FlutterActivity() {
         vpnMethodChannel.setMethodCallHandler(vpnChannelHandler)
         proxyMethodChannel.setMethodCallHandler(proxyChannelHandler)
         systemMethodChannel.setMethodCallHandler(systemChannelHandler)
+        performanceMethodChannel.setMethodCallHandler(performanceChannelHandler)
         
         Timber.d("Method channels configured successfully")
     }
@@ -92,6 +99,9 @@ class MainActivity : FlutterActivity() {
         }
         if (::systemChannelHandler.isInitialized) {
             systemChannelHandler.cleanup()
+        }
+        if (::performanceChannelHandler.isInitialized) {
+            performanceChannelHandler.cleanup()
         }
         
         // Clear VPN channel notifier

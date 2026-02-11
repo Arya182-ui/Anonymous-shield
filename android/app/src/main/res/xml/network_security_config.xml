@@ -1,24 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">vpn.privacyvpn.com</domain>
-        <domain includeSubdomains="true">api.privacyvpn.com</domain>
-    </domain-config>
-    
-    <!-- Allow cleartext for development/debugging (remove in production) -->
-    <domain-config cleartextTrafficPermitted="true">
+    <!-- PRODUCTION: Remove all cleartext permissions -->
+    <!-- <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
-    </domain-config>
+    </domain-config> -->
     
-    <!-- Default configuration for all other domains -->
+    <!-- HTTPS only for all domains -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
-            <!-- Trust preinstalled CAs -->
+            <!-- Only trust system CAs in production -->
             <certificates src="system"/>
-            <!-- Additionally trust user added CAs -->
-            <certificates src="user"/>
         </trust-anchors>
     </base-config>
+    
+    <!-- Certificate pinning for critical domains (if using backend) -->
+    <!--
+    <domain-config>
+        <domain includeSubdomains="true">api.privacyvpn.com</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</pin>
+        </pin-set>
+    </domain-config>
+    -->
 </network-security-config>
