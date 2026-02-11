@@ -12,6 +12,7 @@ import 'package:privacy_vpn_controller/presentation/screens/status_screen.dart';
 import 'package:privacy_vpn_controller/presentation/screens/config_screen.dart';
 import 'package:privacy_vpn_controller/data/models/built_in_server.dart';
 import 'package:privacy_vpn_controller/data/models/proxy_config.dart';
+import 'package:privacy_vpn_controller/data/models/connection_status.dart';
 import 'package:privacy_vpn_controller/business_logic/services/anonymous_chain_service.dart';
 
 class ControlScreen extends ConsumerStatefulWidget {
@@ -56,6 +57,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   @override
   Widget build(BuildContext context) {
     final activeChain = ref.watch(activeAnonymousChainProvider);
+    final vpnStatusAsync = ref.watch(vpnStatusProvider);
+    final proxyStatusAsync = ref.watch(proxyStatusProvider);
     final theme = Theme.of(context);
     
     return Scaffold(
@@ -176,6 +179,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     final isConnected = activeChain?.status == ChainStatus.connected;
     final isConnecting = activeChain?.status == ChainStatus.connecting;
     
+    // Watch both VPN and proxy status for comprehensive display
+    final vpnStatusAsync = ref.watch(vpnStatusProvider);
+    final proxyStatusAsync = ref.watch(proxyStatusProvider);
+    
     // Determine colors based on state
     Color cardColor;
     Color iconColor;
@@ -186,7 +193,27 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       cardColor = customColors.success;
       iconColor = customColors.vpnConnected;
       statusText = 'PROTECTED';
-      subText = 'Traffic is encrypted & anonymous';
+      
+      // Build comprehensive status text
+      var statusParts = <String>[];
+      
+      vpnStatusAsync.whenData((vpnStatus) {
+        if (vpnStatus.vpnStatus == VpnStatus.connected) {
+          statusParts.add('VPN Active');
+        }
+      });
+      
+      proxyStatusAsync.whenData((proxyStatus) {
+        if (proxyStatus == ProxyStatus.enabled) {
+          statusParts.add('Proxy Chain Active');
+        }
+      });
+      
+      if (statusParts.isEmpty) {
+        subText = 'Traffic is encrypted & anonymous';
+      } else {
+        subText = '${statusParts.join(' • ')} • Anonymous';
+      }
     } else if (isConnecting) {
       cardColor = customColors.vpnConnecting;
       iconColor = customColors.vpnConnecting;

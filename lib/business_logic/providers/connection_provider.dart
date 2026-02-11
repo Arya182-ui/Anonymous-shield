@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/connection_status.dart';
 import '../../data/models/built_in_server.dart';
+import '../../data/models/vpn_config.dart';
+import '../managers/vpn_manager.dart';
 
 // Simple connection state for the connection provider
 class SimpleConnectionState {
@@ -71,13 +73,38 @@ class ConnectionNotifier extends StateNotifier<SimpleConnectionState> {
     );
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
-      
-      state = state.copyWith(
-        status: SimpleConnectionStatus.connected,
-        connectionDuration: DateTime.now().difference(state.connectionStartTime ?? DateTime.now()),
-        ipAddress: server.serverAddress,
+      // Create VpnConfig from BuiltInServer
+      final vpnConfig = VpnConfig(
+        id: server.id,
+        name: server.name,
+        serverAddress: server.serverAddress,
+        port: server.port ?? 51820, // Default WireGuard port
+        privateKey: server.privateKey ?? '',
+        publicKey: server.publicKey ?? '',
+        presharedKey: server.presharedKey,
+        allowedIPs: ['0.0.0.0/0', '::/0'],
+        dnsServers: ['1.1.1.1', '1.0.0.1'],
+        createdAt: DateTime.now(),
       );
+      
+      // Use VPN manager to establish connection
+      final vpnManager = VpnManager();
+      await vpnManager.initialize();
+      
+      final success = await vpnManager.connect(vpnConfig);
+      
+      if (success) {
+        state = state.copyWith(
+          status: SimpleConnectionStatus.connected,
+          connectionDuration: DateTime.now().difference(state.connectionStartTime ?? DateTime.now()),
+          ipAddress: server.serverAddress,
+        );
+      } else {
+        state = state.copyWith(
+          status: SimpleConnectionStatus.error,
+          errorMessage: 'VPN connection failed',
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         status: SimpleConnectionStatus.error,
@@ -90,8 +117,18 @@ class ConnectionNotifier extends StateNotifier<SimpleConnectionState> {
     state = state.copyWith(status: SimpleConnectionStatus.disconnecting);
     
     try {
-      await Future.delayed(const Duration(seconds: 1));
-      state = const SimpleConnectionState();
+      // Use VPN manager to disconnect
+      final vpnManager = VpnManager();
+      final success = await vpnManager.disconnect();
+      
+      if (success) {
+        state = const SimpleConnectionState();
+      } else {
+        state = state.copyWith(
+          status: SimpleConnectionStatus.error,
+          errorMessage: 'VPN disconnection failed',
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         status: SimpleConnectionStatus.error,

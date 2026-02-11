@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import '../../data/models/anonymous_chain.dart';
 import '../../data/models/proxy_config.dart';
+import '../../data/models/vpn_config.dart';
 import '../../data/repositories/built_in_servers_repository.dart';
 import '../providers/connection_provider.dart';
+import '../managers/vpn_manager.dart';
+import '../managers/proxy_manager.dart';
 
 class AnonymousChainService {
   static final AnonymousChainService _instance = AnonymousChainService._internal();
@@ -62,7 +65,30 @@ class AnonymousChainService {
       // Connect VPN exit if specified
       if (chain.vpnExit != null) {
         _logger.i('Connecting VPN exit: ${chain.vpnExit!.name}');
-        await ref.read(connectionProvider.notifier).connect(chain.vpnExit!);
+        
+        // Use VPN manager instead of connection provider
+        final vpnManager = VpnManager();
+        await vpnManager.initialize();
+        
+        // Create VpnConfig from BuiltInServer
+        final vpnConfig = VpnConfig(
+          id: chain.vpnExit!.id,
+          name: chain.vpnExit!.name,
+          serverAddress: chain.vpnExit!.serverAddress,
+          port: chain.vpnExit!.port ?? 51820,
+          privateKey: chain.vpnExit!.privateKey ?? '',
+          publicKey: chain.vpnExit!.publicKey ?? '',
+          presharedKey: chain.vpnExit!.presharedKey,
+          allowedIPs: ['0.0.0.0/0', '::/0'],
+          dnsServers: ['1.1.1.1', '1.0.0.1'],
+          createdAt: DateTime.now(),
+        );
+        
+        final vpnSuccess = await vpnManager.connect(vpnConfig);
+        if (!vpnSuccess) {
+          _logger.e('Failed to connect VPN exit: ${chain.vpnExit!.name}');
+          return false;
+        }
       }
       
       // Mark chain as connected
@@ -201,11 +227,13 @@ class AnonymousChainService {
     _rotationTimer?.cancel();
     _heartbeatTimer?.cancel();
     
-    // Disconnect VPN
-    await ref.read(connectionProvider.notifier).disconnect();
+    // Disconnect VPN using VPN manager
+    final vpnManager = VpnManager();
+    await vpnManager.disconnect();
     
-    // Disconnect proxy chain (implementation depends on native proxy client)
-    // This would involve platform-specific proxy disconnection
+    // Disconnect proxy chain using ProxyManager
+    final proxyManager = ProxyManager();
+    await proxyManager.stopAllProxies();
     
     _currentChain = _currentChain?.copyWith(status: ChainStatus.inactive);
     
@@ -214,19 +242,14 @@ class AnonymousChainService {
   
   // Private helper methods
   Future<bool> _connectToProxy(ProxyConfig proxy) async {
-    // This would integrate with the native proxy client
-    // For now, simulate connection with delay
-    await Future.delayed(Duration(
-      milliseconds: 500 + Random().nextInt(1000)
-    ));
+    // Use real ProxyManager instead of simulation
+    final proxyManager = ProxyManager();
+    await proxyManager.initialize();
     
-    // In real implementation:
-    // - Establish SOCKS5/Shadowsocks/V2Ray connection
-    // - Test connectivity through the proxy
-    // - Configure traffic routing
+    final success = await proxyManager.startProxy(proxy);
     
-    _logger.i('Connected to ${proxy.name} (${proxy.type.name})');
-    return true;
+    _logger.i('Connected to ${proxy.name} (${proxy.type.name}): $success');
+    return success;
   }
   
   void _startAutoRotation(AnonymousChain chain, WidgetRef ref) {

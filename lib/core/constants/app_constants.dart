@@ -5,6 +5,9 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   static const String packageName = 'com.privacyvpn.privacy_vpn_controller';
   
+  // Debug configuration
+  static const bool debugMode = true; // Set to false for release builds
+  
   // Privacy & Security
   static const String privacyPolicy = '''
 This application is designed with privacy as the core principle:
@@ -103,7 +106,6 @@ You maintain complete control over your privacy.
   static const String proxyNotificationChannelName = 'Proxy Status';
   
   // Testing & Debug (Production: false)
-  static const bool debugMode = false;
   static const bool enableDetailedLogging = false;
   static const bool skipVpnPermissionCheck = false;
   static const bool enableAutoDemoConnections = false; // Disable auto demo connections
