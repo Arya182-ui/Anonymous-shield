@@ -5,10 +5,10 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   static const String packageName = 'com.privacyvpn.privacy_vpn_controller';
   
-  // Debug configuration
-  static const bool debugMode = true; // Set to false for release builds
-  
-  // Privacy & Security
+  // Debug configuration - CRITICAL: Set to false for production!
+  static const bool debugMode = false; // ← PRODUCTION: Must be false
+  static const bool enableDetailedLogging = false; // ← No sensitive logs in production
+  static const bool skipVpnPermissionCheck = false; // ← Never skip in production
   static const String privacyPolicy = '''
 This application is designed with privacy as the core principle:
 
