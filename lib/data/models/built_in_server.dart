@@ -41,28 +41,37 @@ class BuiltInServer {
   Map<String, dynamic> toJson() => _$BuiltInServerToJson(this);
 
   VpnConfig toVpnConfig() {
+    // Note: Built-in servers should have real pre-configured keys
+    // In production, these would be actual WireGuard key pairs for your servers
     return VpnConfig(
       id: id,
       name: name,
       serverAddress: serverAddress,
       port: port,
-      // These would be pre-generated keys for built-in servers
-      privateKey: _generatePrivateKey(),
-      publicKey: _generatePublicKey(),
+      // WARNING: These are placeholder keys - replace with real keys in production
+      privateKey: _getConfiguredPrivateKey(),
+      publicKey: _getConfiguredPublicKey(),
       allowedIPs: ['0.0.0.0/0'],
       dnsServers: ['1.1.1.1', '1.0.0.1'],
       createdAt: DateTime.now(),
     );
   }
   
-  String _generatePrivateKey() {
-    // In production, these would be actual pre-configured keys
-    return 'mock_private_key_${id}';
+  String _getConfiguredPrivateKey() {
+    // PRODUCTION TODO: Replace with actual WireGuard private keys
+    // These should be loaded from a secure configuration file or environment
+    // Example: Load from encrypted assets or secure remote configuration
+    
+    // For now, return a warning placeholder
+    return 'REPLACE_WITH_REAL_PRIVATE_KEY_FOR_SERVER_$id';
   }
   
-  String _generatePublicKey() {
-    // In production, these would be actual pre-configured keys  
-    return 'mock_public_key_${id}';
+  String _getConfiguredPublicKey() {
+    // PRODUCTION TODO: Replace with actual WireGuard public keys  
+    // These should correspond to the private keys above
+    
+    // For now, return a warning placeholder
+    return 'REPLACE_WITH_REAL_PUBLIC_KEY_FOR_SERVER_$id';
   }
   
   double distanceFrom(double userLat, double userLon) {

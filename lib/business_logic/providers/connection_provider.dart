@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/connection_status.dart';
 import '../../data/models/built_in_server.dart';
-import '../../data/models/vpn_config.dart';
 import '../managers/vpn_manager.dart';
 
 // Simple connection state for the connection provider
@@ -74,18 +73,7 @@ class ConnectionNotifier extends StateNotifier<SimpleConnectionState> {
 
     try {
       // Create VpnConfig from BuiltInServer
-      final vpnConfig = VpnConfig(
-        id: server.id,
-        name: server.name,
-        serverAddress: server.serverAddress,
-        port: server.port ?? 51820, // Default WireGuard port
-        privateKey: server.privateKey ?? '',
-        publicKey: server.publicKey ?? '',
-        presharedKey: server.presharedKey,
-        allowedIPs: ['0.0.0.0/0', '::/0'],
-        dnsServers: ['1.1.1.1', '1.0.0.1'],
-        createdAt: DateTime.now(),
-      );
+      final vpnConfig = server.toVpnConfig();
       
       // Use VPN manager to establish connection
       final vpnManager = VpnManager();

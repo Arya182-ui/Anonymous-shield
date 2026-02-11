@@ -4,9 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import '../../data/models/anonymous_chain.dart';
 import '../../data/models/proxy_config.dart';
-import '../../data/models/vpn_config.dart';
 import '../../data/repositories/built_in_servers_repository.dart';
-import '../providers/connection_provider.dart';
 import '../managers/vpn_manager.dart';
 import '../managers/proxy_manager.dart';
 
@@ -71,18 +69,7 @@ class AnonymousChainService {
         await vpnManager.initialize();
         
         // Create VpnConfig from BuiltInServer
-        final vpnConfig = VpnConfig(
-          id: chain.vpnExit!.id,
-          name: chain.vpnExit!.name,
-          serverAddress: chain.vpnExit!.serverAddress,
-          port: chain.vpnExit!.port ?? 51820,
-          privateKey: chain.vpnExit!.privateKey ?? '',
-          publicKey: chain.vpnExit!.publicKey ?? '',
-          presharedKey: chain.vpnExit!.presharedKey,
-          allowedIPs: ['0.0.0.0/0', '::/0'],
-          dnsServers: ['1.1.1.1', '1.0.0.1'],
-          createdAt: DateTime.now(),
-        );
+        final vpnConfig = chain.vpnExit!.toVpnConfig();
         
         final vpnSuccess = await vpnManager.connect(vpnConfig);
         if (!vpnSuccess) {

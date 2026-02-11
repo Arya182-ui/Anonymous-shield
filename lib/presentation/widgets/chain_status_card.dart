@@ -185,7 +185,6 @@ class ChainStatusCard extends ConsumerWidget {
           ),
           
           ...chain.proxyChain.asMap().entries.map((entry) {
-            final index = entry.key;
             final proxy = entry.value;
             
             return Expanded(

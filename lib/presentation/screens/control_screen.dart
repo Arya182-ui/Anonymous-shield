@@ -2,18 +2,16 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 import '../../core/theme/app_theme.dart';
 import 'package:privacy_vpn_controller/data/models/anonymous_chain.dart';
 import 'package:privacy_vpn_controller/business_logic/providers/anonymous_providers.dart';
-import 'package:privacy_vpn_controller/business_logic/providers/connection_provider.dart';
 import 'package:privacy_vpn_controller/presentation/widgets/connection_button.dart';
 import 'package:privacy_vpn_controller/presentation/screens/mode_info_screen.dart';
 import 'package:privacy_vpn_controller/presentation/screens/status_screen.dart';
 import 'package:privacy_vpn_controller/presentation/screens/config_screen.dart';
-import 'package:privacy_vpn_controller/data/models/built_in_server.dart';
 import 'package:privacy_vpn_controller/data/models/proxy_config.dart';
 import 'package:privacy_vpn_controller/data/models/connection_status.dart';
-import 'package:privacy_vpn_controller/business_logic/services/anonymous_chain_service.dart';
 
 class ControlScreen extends ConsumerStatefulWidget {
   @override
@@ -23,6 +21,7 @@ class ControlScreen extends ConsumerStatefulWidget {
 class _ControlScreenState extends ConsumerState<ControlScreen> 
     with TickerProviderStateMixin {
   
+  final Logger _logger = Logger();
   late AnimationController _pulseController;
   late AnimationController _mapController; // Added for map animation
   late Animation<double> _pulseAnimation;
@@ -57,8 +56,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   @override
   Widget build(BuildContext context) {
     final activeChain = ref.watch(activeAnonymousChainProvider);
-    final vpnStatusAsync = ref.watch(vpnStatusProvider);
-    final proxyStatusAsync = ref.watch(proxyStatusProvider);
     final theme = Theme.of(context);
     
     return Scaffold(
@@ -577,9 +574,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         // Clear the active chain
         ref.read(activeAnonymousChainProvider.notifier).clearChain();
         
-        print('Disconnected from VPN');
+        _logger.d('Disconnected from VPN');
       } catch (e) {
-        print('Failed to disconnect: $e');
+        _logger.e('Failed to disconnect: $e');
         // Revert status on error
         ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.connected);
       }
@@ -610,16 +607,16 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         final success = await chainService.connectToChain(chain, ref);
         
         if (success) {
-          print('Connected to VPN with $_selectedMode mode');
+          _logger.i('Connected to VPN with $_selectedMode mode');
           // Update provider with connected chain
           ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.connected);
         } else {
-          print('Failed to establish connection');
+          _logger.w('Failed to establish connection');
           // Update status to error
           ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.error);
         }
       } catch (e) {
-        print('Failed to connect: $e');
+        _logger.e('Failed to connect: $e');
         ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.error);
       }
     }
