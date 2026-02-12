@@ -85,6 +85,56 @@ class ConnectionStatus {
   factory ConnectionStatus.fromJson(Map<String, dynamic> json) => _$ConnectionStatusFromJson(json);
   Map<String, dynamic> toJson() => _$ConnectionStatusToJson(this);
 
+  // Factory method for method channel
+  factory ConnectionStatus.fromMap(Map<String, dynamic> map) {
+    return ConnectionStatus(
+      vpnStatus: VpnStatus.values.firstWhere(
+        (e) => e.toString().split('.').last == map['vpnStatus'],
+        orElse: () => VpnStatus.disconnected,
+      ),
+      proxyStatus: ProxyStatus.values.firstWhere(
+        (e) => e.toString().split('.').last == map['proxyStatus'],
+        orElse: () => ProxyStatus.disabled,
+      ),
+      currentServerId: map['currentServerId'],
+      currentServerName: map['currentServerName'],
+      currentIpAddress: map['currentIpAddress'],
+      currentCountry: map['currentCountry'],
+      currentCity: map['currentCity'],
+      connectedAt: map['connectedAt'] != null 
+          ? DateTime.fromMillisecondsSinceEpoch(map['connectedAt']) 
+          : null,
+      lastRotationAt: map['lastRotationAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['lastRotationAt'])
+          : null,
+      nextRotationAt: map['nextRotationAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['nextRotationAt'])
+          : null,
+      connectionDuration: map['connectionDuration'] != null
+          ? Duration(milliseconds: map['connectionDuration'])
+          : null,
+      bytesReceived: map['bytesReceived'] ?? 0,
+      bytesSent: map['bytesSent'] ?? 0,
+      lastErrorMessage: map['lastErrorMessage'],
+      lastErrorAt: map['lastErrorAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['lastErrorAt'])
+          : null,
+      killSwitchActive: map['killSwitchActive'] ?? false,
+      dnsLeakProtectionActive: map['dnsLeakProtectionActive'] ?? false,
+      ipv6Blocked: map['ipv6Blocked'] ?? false,
+    );
+  }
+
+  // Factory method to create disconnected status
+  factory ConnectionStatus.disconnected({String? errorMessage}) {
+    return ConnectionStatus(
+      vpnStatus: VpnStatus.disconnected,
+      proxyStatus: ProxyStatus.disabled,
+      lastErrorMessage: errorMessage,
+      lastErrorAt: errorMessage != null ? DateTime.now() : null,
+    );
+  }
+
   ConnectionStatus copyWith({
     VpnStatus? vpnStatus,
     ProxyStatus? proxyStatus,

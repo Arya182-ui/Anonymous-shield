@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.system.OsConstants
 import androidx.core.app.NotificationCompat
-import androidx.lifecycle.lifecycleScope
 import com.wireguard.android.backend.GoBackend
 import com.wireguard.android.backend.Tunnel
 import com.wireguard.config.Config
@@ -111,95 +110,6 @@ class VpnControllerService : VpnService() {
      * Start VPN connection with given configuration
      */
     private fun startVpnConnection(config: VpnConfiguration) {
-        serviceScope.launch {
-            try {
-                Timber.i("Starting VPN connection to ${config.name}")
-                currentConfig.set(config)
-                
-                // Enable kill switch before connecting
-                killSwitch?.enableKillSwitch(config)
-                
-                // Parse WireGuard configuration
-                val wireGuardConfig = parseWireGuardConfig(config)
-                
-                // Create VPN interface
-                val builder = Builder()
-                    .setSession(config.name)
-                    .setMtu(config.mtu)
-                    .addAddress(wireGuardConfig.`interface`.addresses.first().address, 
-                               wireGuardConfig.`interface`.addresses.first().mask)
-                    .addRoute("0.0.0.0", 0)
-                    .addRoute("::", 0)
-                    .setBlocking(true) // Enable blocking mode for kill switch
-                    .allowFamily(OsConstants.AF_INET)
-                    .allowFamily(OsConstants.AF_INET6)
-                
-                // Configure DNS servers
-                config.dnsServers.forEach { dnsServer ->
-                    try {
-                        builder.addDnsServer(InetAddress.getByName(dnsServer))
-                    } catch (e: Exception) {
-                        Timber.w("Invalid DNS server: $dnsServer")
-                    }
-                }
-                
-                // Block IPv6 if configured (prevent leaks)
-                if (config.blockIpv6) {
-                    // IPv6 is blocked by not adding IPv6 routes when blockIpv6 is true
-                    Timber.d("IPv6 blocking enabled")
-                }
-                
-                // Establish VPN interface
-                vpnInterface?.close()
-                vpnInterface = builder.establish()
-                
-                if (vpnInterface == null) {
-                    throw IOException("Failed to establish VPN interface")
-                }
-                
-                // Create and start tunnel
-                currentTunnel = SimpleTunnel(config.name)
-                val tunnelHandle = wireGuardBackend.setState(currentTunnel!!, 
-                    Tunnel.State.UP, wireGuardConfig)
-                
-                if (tunnelHandle < 0) {
-                    throw IOException("Failed to bring up WireGuard tunnel")
-                }
-                
-                // Notify kill switch of successful VPN connection
-                killSwitch?.setVpnNetwork(connectivityManager.activeNetwork)
-                
-                // Start connection monitoring
-                connectionMonitor?.startMonitoring(config)
-                
-                // Start statistics collection
-                startStatisticsCollection()
-                
-                // Show persistent notification
-                startForeground(NOTIFICATION_ID, createVpnNotification(config))
-                
-                // Notify Flutter layer of successful connection
-                VpnChannelNotifier.notifyConnectionStateChanged("connected", config.name)
-                
-                Timber.i("VPN connection established successfully")
-                
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to start VPN connection")
-                
-                // Clean up on failure
-                currentConfig.set(null)
-                killSwitch?.disableKillSwitch()
-                vpnInterface?.close()
-                vpnInterface = null
-                currentTunnel = null
-                
-                // Notify Flutter layer of connection failure
-                VpnChannelNotifier.notifyConnectionStateChanged("error", e.message ?: "Unknown error")
-                
-                stopSelf()
-            }
-        }
-    }
         serviceScope.launch {
             try {
                 Timber.d("Starting VPN connection to ${config.name}")

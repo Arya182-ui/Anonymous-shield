@@ -78,6 +78,32 @@ class ProxyConfig {
   factory ProxyConfig.fromJson(Map<String, dynamic> json) => _$ProxyConfigFromJson(json);
   Map<String, dynamic> toJson() => _$ProxyConfigToJson(this);
 
+  // toMap method for method channels
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'type': type.toString().split('.').last,
+      'role': role?.toString().split('.').last,
+      'host': host,
+      'port': port,
+      'username': username,
+      'password': password,
+      'method': method,
+      'plugin': plugin,
+      'pluginOptions': pluginOptions,
+      'country': country,
+      'countryCode': countryCode,
+      'flagEmoji': flagEmoji,
+      'isObfuscated': isObfuscated,
+      'priority': priority,
+      'isEnabled': isEnabled,
+      'createdAt': createdAt.millisecondsSinceEpoch,
+      'lastUsedAt': lastUsedAt?.millisecondsSinceEpoch,
+      'metadata': metadata,
+    };
+  }
+
   factory ProxyConfig.socks5({
     required String name,
     required String host,
