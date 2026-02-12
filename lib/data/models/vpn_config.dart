@@ -15,10 +15,22 @@ class VpnConfig {
   final List<String> allowedIPs;
   final List<String> dnsServers;
   final int? mtu;
+  final String? endpoint; // Full endpoint with port
   final DateTime createdAt;
   final DateTime? lastUsedAt;
   final bool isActive;
   final Map<String, dynamic>? metadata;
+
+  // Enhanced properties for enhanced VPN manager
+  final bool autoRotate;
+  final Duration rotationInterval;
+  final String serverName;
+  final String serverHost;
+  final int serverPort;
+  final String protocol;
+  final String? clientIpv4;
+  final bool killSwitchEnabled;
+  final String? customConfig;
 
   const VpnConfig({
     required this.id,
@@ -31,11 +43,24 @@ class VpnConfig {
     this.allowedIPs = const ['0.0.0.0/0', '::/0'],
     this.dnsServers = const ['1.1.1.1', '1.0.0.1'],
     this.mtu,
+    this.endpoint,
     required this.createdAt,
     this.lastUsedAt,
     this.isActive = false,
     this.metadata,
-  });
+    // Enhanced properties
+    this.autoRotate = false,
+    this.rotationInterval = const Duration(minutes: 30),
+    String? serverName,
+    String? serverHost,
+    int? serverPort,
+    this.protocol = 'WireGuard',
+    this.clientIpv4,
+    this.killSwitchEnabled = false,
+    this.customConfig,
+  })  : serverName = serverName ?? name,
+        serverHost = serverHost ?? serverAddress,
+        serverPort = serverPort ?? port;
 
   factory VpnConfig.fromJson(Map<String, dynamic> json) => _$VpnConfigFromJson(json);
   Map<String, dynamic> toJson() => _$VpnConfigToJson(this);
@@ -87,6 +112,11 @@ class VpnConfig {
       dnsServers: dnsServers.isNotEmpty ? dnsServers : ['1.1.1.1', '1.0.0.1'],
       mtu: mtu,
       createdAt: DateTime.now(),
+      // Enhanced properties defaults
+      autoRotate: false,
+      rotationInterval: const Duration(minutes: 30),
+      killSwitchEnabled: true,
+      protocol: 'WireGuard',
     );
   }
   
@@ -126,6 +156,16 @@ class VpnConfig {
     DateTime? lastUsedAt,
     bool? isActive,
     Map<String, dynamic>? metadata,
+    // Enhanced properties
+    bool? autoRotate,
+    Duration? rotationInterval,
+    String? serverName,
+    String? serverHost,
+    int? serverPort,
+    String? protocol,
+    String? clientIpv4,
+    bool? killSwitchEnabled,
+    String? customConfig,
   }) {
     return VpnConfig(
       id: id ?? this.id,
@@ -142,6 +182,16 @@ class VpnConfig {
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
       isActive: isActive ?? this.isActive,
       metadata: metadata ?? this.metadata,
+      // Enhanced properties
+      autoRotate: autoRotate ?? this.autoRotate,
+      rotationInterval: rotationInterval ?? this.rotationInterval,
+      serverName: serverName ?? this.serverName,
+      serverHost: serverHost ?? this.serverHost,
+      serverPort: serverPort ?? this.serverPort,
+      protocol: protocol ?? this.protocol,
+      clientIpv4: clientIpv4 ?? this.clientIpv4,
+      killSwitchEnabled: killSwitchEnabled ?? this.killSwitchEnabled,
+      customConfig: customConfig ?? this.customConfig,
     );
   }
 

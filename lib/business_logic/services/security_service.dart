@@ -283,16 +283,6 @@ class SecurityService {
       return false; // Assume no VPN DNS if we can't check
     }
   }
-    try {
-      final hasLeak = await detectDnsLeaks();
-      if (hasLeak) {
-        _logger.w('Potential DNS leak detected!');
-        // In production, would trigger leak mitigation
-      }
-    } catch (e) {
-      _logger.e('DNS leak check failed', error: e);
-    }
-  }
   
   /// Check for IPv6 leaks (simplified)
   Future<bool> _checkIpv6Leaks() async {

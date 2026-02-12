@@ -40,6 +40,9 @@ class BuiltInServer {
   factory BuiltInServer.fromJson(Map<String, dynamic> json) => _$BuiltInServerFromJson(json);
   Map<String, dynamic> toJson() => _$BuiltInServerToJson(this);
 
+  // Compatibility getter for method channels
+  String get host => serverAddress;
+
   VpnConfig toVpnConfig() {
     // Note: Built-in servers should have real pre-configured keys
     // In production, these would be actual WireGuard key pairs for your servers

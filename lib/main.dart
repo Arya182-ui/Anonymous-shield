@@ -17,6 +17,7 @@ import 'platform/channels/proxy_channel.dart';
 // Business logic imports
 import 'business_logic/managers/vpn_manager.dart';
 import 'business_logic/managers/proxy_manager.dart';
+import 'business_logic/managers/auto_vpn_config_manager.dart'; // NEW
 
 // Presentation imports
 import 'presentation/screens/splash_screen.dart';
@@ -71,6 +72,11 @@ void main() async {
     final proxyManager = ProxyManager();
     await proxyManager.initialize();
     logger.i('Proxy manager initialized');
+    
+    // Initialize auto VPN configuration manager - NEW
+    final autoVpnManager = AutoVpnConfigManager();
+    await autoVpnManager.initialize();
+    logger.i('Auto VPN configuration manager initialized');
     
     // Set system UI overlay style (dark status bar)
     SystemChrome.setSystemUIOverlayStyle(

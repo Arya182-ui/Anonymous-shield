@@ -19,6 +19,10 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.privacyvpn.privacy_vpn_controller"
         minSdk = flutter.minSdkVersion  // Minimum for VPN service and modern security features
@@ -84,14 +88,12 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
-            }
         }
         
         // Optional: Create a staging build type for testing production features
         create("staging") {
             initWith(getByName("release"))
             isDebuggable = true
-            applicationIdSuffix = ".staging"
             versionNameSuffix = "-STAGING"
         }
     }

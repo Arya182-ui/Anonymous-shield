@@ -8,6 +8,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import timber.log.Timber
+import com.privacyvpn.privacy_vpn_controller.BuildConfig
 import com.privacyvpn.privacy_vpn_controller.vpn.VpnControllerService
 import com.privacyvpn.privacy_vpn_controller.proxy.ProxyService
 import com.privacyvpn.privacy_vpn_controller.channels.VpnMethodChannelHandler

@@ -1,9 +1,17 @@
 import '../models/built_in_server.dart';
+import '../models/vpn_config.dart';
+import '../services/free_vpn_provider.dart';
+import 'package:logger/logger.dart';
 
 class BuiltInServersRepository {
   static final BuiltInServersRepository _instance = BuiltInServersRepository._internal();
   factory BuiltInServersRepository() => _instance;
   BuiltInServersRepository._internal();
+
+  final Logger _logger = Logger();
+  final FreeVpnProvider _freeVpnProvider = FreeVpnProvider();
+  
+  List<VpnConfig>? _cachedFreeConfigs;
 
   // Pre-configured free servers for instant connectivity
   static final List<BuiltInServer> _servers = [
@@ -179,5 +187,52 @@ class BuiltInServersRepository {
     final countries = _servers.map((server) => server.country).toSet().toList();
     countries.sort();
     return countries;
+  }
+  
+  /// Get real VPN configurations from free providers
+  Future<List<VpnConfig>> getRealVpnConfigurations() async {
+    try {
+      _logger.i('Fetching real VPN configurations from free providers...');
+      
+      // Check cache first
+      if (_cachedFreeConfigs != null && _cachedFreeConfigs!.isNotEmpty) {
+        _logger.d('Returning cached VPN configurations');
+        return _cachedFreeConfigs!;
+      }
+      
+      // Fetch fresh configurations
+      final configs = await _freeVpnProvider.getFreeVpnConfigs();
+      _cachedFreeConfigs = configs;
+      
+      _logger.i('Retrieved ${configs.length} real VPN configurations');
+      return configs;
+      
+    } catch (e, stack) {
+      _logger.e('Failed to get real VPN configurations', error: e, stackTrace: stack);
+      
+      // Fallback to test configuration for development
+      return [_freeVpnProvider.createTestConfig()];
+    }
+  }
+  
+  /// Add custom VPN configuration (user imported)
+  Future<bool> addCustomVpnConfig(VpnConfig config) async {
+    try {
+      _cachedFreeConfigs ??= [];
+      _cachedFreeConfigs!.add(config);
+      
+      _logger.i('Added custom VPN configuration: ${config.name}');
+      return true;
+      
+    } catch (e) {
+      _logger.e('Failed to add custom VPN config', error: e);
+      return false;
+    }
+  }
+  
+  /// Clear cached configurations (force refresh)
+  void clearCache() {
+    _cachedFreeConfigs = null;
+    _logger.d('VPN configuration cache cleared');
   }
 }
