@@ -1,53 +1,232 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:logger/logger.dart';
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:internet_connection_checker/internet_connection_checker.dart';
 import '../../platform/channels/vpn_method_channel.dart';
 import '../../data/models/connection_status.dart';
+import '../../data/models/enhanced_vpn_models.dart';
 
-/// Comprehensive Security Manager
-/// Advanced security services including kill switch, leak protection, and monitoring
+/// Production-Grade Security Manager
+/// Advanced security services with comprehensive protection suite
 class SecurityManager {
   static final SecurityManager _instance = SecurityManager._internal();
   factory SecurityManager() => _instance;
   SecurityManager._internal();
 
   final Logger _logger = Logger();
+  final NetworkInfo _networkInfo = NetworkInfo();
+  final InternetConnectionChecker _connectionChecker = InternetConnectionChecker();
   
-  // Security state
+  // Security state tracking
   bool _isKillSwitchEnabled = false;
-  bool _isDnsLeakProtectionEnabled = true;
-  bool _isIpv6BlockingEnabled = true;
-  bool _isWebRtcBlockingEnabled = true;
+  bool _isDnsLeakProtectionEnabled = false;
+  bool _isIpv6BlockingEnabled = false;
+  bool _isWebRtcBlockingEnabled = false;
+  bool _isTrafficObfuscationEnabled = false;
   
-  // Monitoring timers
+  // Advanced security features
+  bool _isAntiCensorshipEnabled = false;
+  bool _isDeepPacketInspectionProtectionEnabled = false;
+  bool _isMalwareProtectionEnabled = true;
+  
+  // Monitoring and detection
   Timer? _leakTestTimer;
   Timer? _connectionMonitorTimer;
   Timer? _securityScanTimer;
   
-  // Security callbacks
+  // Security alerts and monitoring
   StreamController<SecurityAlert>? _alertController;
   Stream<SecurityAlert>? _alertStream;
   
+  // Network monitoring
+  String? _lastKnownIP;
+  List<String> _trustedDnsServers = [
+    '1.1.1.1', '1.0.0.1',  // Cloudflare (privacy-focused)
+    '9.9.9.9', '149.112.112.112',  // Quad9 (security-focused) 
+    '8.8.8.8', '8.8.4.4'  // Google (fallback)
+  ];
+  
+  // Leak detection results
+  List<LeakTestResult> _recentLeakTests = [];
+  DateTime? _lastSecurityScan;
+  
   bool _isInitialized = false;
 
-  /// Initialize security manager
+  /// Initialize security manager with comprehensive protection
   Future<bool> initialize() async {
     if (_isInitialized) return true;
     
     try {
+      _logger.i('Initializing Production Security Manager');
+      
       _alertController = StreamController<SecurityAlert>.broadcast();
       _alertStream = _alertController!.stream;
       
-      // Start security monitoring
-      _startLeakTesting();
-      _startConnectionMonitoring();
-      _startSecurityScanning();
+      // Initialize network monitoring
+      await _initializeNetworkMonitoring();
+      
+      // Set up method channel handlers
+      VpnMethodChannel.setMethodCallHandler(_handleSecurityCallback);
+      
+      // Start comprehensive security monitoring
+      await _startComprehensiveMonitoring();
+      
+      // Perform initial security assessment
+      await _performInitialSecurityAssessment();
       
       _isInitialized = true;
-      _logger.i('Security Manager initialized');
+      _logger.i('Security Manager initialized with advanced protection');
       return true;
       
     } catch (e) {
+      _logger.e('Failed to initialize Security Manager: $e');
+      return false;
+    }
+  }
+
+  /// Get security alerts stream
+  Stream<SecurityAlert> get alertStream {
+    if (!_isInitialized) {
+      throw StateError('Security Manager not initialized');
+    }
+    return _alertStream!;
+  }
+
+  /// Enable production-grade kill switch
+  Future<bool> enableKillSwitch() async {
+    if (!_isInitialized) return false;
+    
+    try {
+      _logger.i('Enabling production kill switch');
+      
+      final result = await VpnMethodChannel.invokeMethod('enableAdvancedKillSwitch', {
+        'block_all_traffic': true,
+        'allow_local_network': false,
+        'allow_vpn_traffic_only': true,
+        'emergency_protocols': ['ICMP'], // Allow ping for connectivity tests
+        'whitelist_apps': [], // No app exceptions in production mode
+        'ipv6_blocking': true,
+        'dns_blocking': true,
+        'webrtc_blocking': true,
+      });
+      
+      if (result['success'] == true) {
+        _isKillSwitchEnabled = true;
+        _emitSecurityAlert(SecurityAlertType.info, 
+          'Kill Switch Enabled', 
+          'Advanced kill switch activated - all non-VPN traffic blocked'
+        );
+        
+        // Start kill switch monitoring
+        _startKillSwitchMonitoring();
+        
+        _logger.i('Kill switch enabled successfully');
+        return true;
+      } else {
+        _logger.e('Failed to enable kill switch: ${result['error']}');
+        return false;
+      }
+      
+    } catch (e) {
+      _logger.e('Kill switch enable error: $e');
+      return false;
+    }
+  }
+
+  /// Enable comprehensive DNS leak protection
+  Future<bool> enableDnsLeakProtection() async {
+    if (!_isInitialized) return false;
+    
+    try {
+      _logger.i('Enabling comprehensive DNS leak protection');
+      
+      final result = await VpnMethodChannel.invokeMethod('enableDnsLeakProtection', {
+        'trusted_dns_servers': _trustedDnsServers,
+        'block_system_dns': true,
+        'force_vpn_dns': true,
+        'block_ipv6_dns': true,
+        'enable_dns_over_https': true,
+        'enable_dns_over_tls': true,
+        'block_dns_rebinding': true,
+        'validate_dns_responses': true,
+      });
+      
+      if (result['success'] == true) {
+        _isDnsLeakProtectionEnabled = true;
+        _emitSecurityAlert(SecurityAlertType.info,
+          'DNS Protection Enabled',
+          'Comprehensive DNS leak protection activated'
+        );
+        
+        // Start DNS monitoring
+        _startDnsLeakMonitoring();
+        
+        _logger.i('DNS leak protection enabled successfully');
+        return true;
+      } else {
+        _logger.e('Failed to enable DNS protection: ${result['error']}');
+        return false;
+      }
+      
+    } catch (e) {
+      _logger.e('DNS protection enable error: $e');
+      return false;
+    }
+  }
+
+  /// Enable advanced IPv6 leak protection
+  Future<bool> enableIpv6Protection() async {
+    try {
+      _logger.i('Enabling IPv6 leak protection');
+      
+      final result = await VpnMethodChannel.invokeMethod('enableIpv6Protection', {
+        'block_all_ipv6': true,
+        'disable_ipv6_stack': true,
+        'block_teredo_tunneling': true,
+        'block_6to4_tunneling': true,
+        'block_isatap_tunneling': true,
+      });
+      
+      if (result['success'] == true) {
+        _isIpv6BlockingEnabled = true;
+        _logger.i('IPv6 protection enabled');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _logger.e('IPv6 protection error: $e');
+      return false;
+    }
+  }
+
+  /// Enable traffic obfuscation for censorship resistance
+  Future<bool> enableTrafficObfuscation() async {
+    try {
+      _logger.i('Enabling traffic obfuscation');
+      
+      final result = await VpnMethodChannel.invokeMethod('enableTrafficObfuscation', {
+        'obfuscation_method': 'shadowsocks',
+        'randomize_packet_sizes': true,
+        'randomize_timing': true,
+        'mimic_https_traffic': true,
+        'enable_padding': true,
+      });
+      
+      if (result['success'] == true) {
+        _isTrafficObfuscationEnabled = true;
+        _emitSecurityAlert(SecurityAlertType.info,
+          'Traffic Obfuscation Enabled',
+          'Advanced obfuscation active for bypass censorship'
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _logger.e('Traffic obfuscation error: $e');
+      return false;
+    }
+  }
       _logger.e('Failed to initialize Security Manager: $e');
       return false;
     }

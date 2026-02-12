@@ -15,12 +15,22 @@ class AutoVpnConfigManager {
   final FreeVpnProvider _freeProvider = FreeVpnProvider();
 
   bool _isInitialized = false;
+  bool _isInitializing = false;
   VpnConfig? _currentConfig;
   List<VpnConfig> _availableConfigs = [];
   /// Initialize the auto configuration manager
   Future<void> initialize() async {
     if (_isInitialized) return;
+    if (_isInitializing) {
+      _logger.w('Initialization already in progress, waiting...');
+      // Wait for initialization to complete
+      while (_isInitializing && !_isInitialized) {
+        await Future.delayed(Duration(milliseconds: 100));
+      }
+      return;
+    }
 
+    _isInitializing = true;
     try {
       _logger.i('Initializing Auto VPN Configuration Manager...');
 
@@ -37,6 +47,8 @@ class AutoVpnConfigManager {
       _logger.e('Failed to initialize Auto VPN Configuration Manager', 
                 error: e, stackTrace: stack);
       throw Exception('Initialization failed: $e');
+    } finally {
+      _isInitializing = false;
     }
   }
   /// Get the best available VPN configuration automatically
@@ -81,32 +93,53 @@ class AutoVpnConfigManager {
   /// Get multiple VPN configurations for rotation
   Future<List<VpnConfig>> getMultipleConfigs({int count = 5}) async {
     await _ensureInitialized();
+    return _getMultipleConfigsInternal(count: count);
+  }
 
+  /// Internal method to get multiple configs (used during initialization)
+  Future<List<VpnConfig>> _getMultipleConfigsInternal({int count = 5}) async {
     try {
       _logger.i('Getting multiple VPN configurations...');
 
       final configs = <VpnConfig>[];
 
-      // 1. Get multiple WARP configurations
-      final warpConfigs = await _freeProvider.getMultipleWarpConfigs(count: 2);
-      configs.addAll(warpConfigs);
+      // 1. Try to get WARP configurations (with better error handling)
+      try {
+        final warpConfigs = await _freeProvider.getMultipleWarpConfigs(count: 2);
+        configs.addAll(warpConfigs);
+        _logger.d('Successfully added ${warpConfigs.length} WARP configurations');
+      } catch (e) {
+        _logger.w('WARP configuration failed, continuing with built-in servers: $e');
+        // Continue without WARP configs - this is not critical for app functionality
+      }
 
-      // 2. Get built-in server configurations
-      final serverConfigs = await _serverService.getMultipleFreeConfigs(limit: count - configs.length);
-      configs.addAll(serverConfigs);
+      // 2. Get built-in server configurations (prioritize these as they're more reliable)
+      try {
+        final serverConfigs = await _serverService.getMultipleFreeConfigs(limit: count - configs.length);
+        configs.addAll(serverConfigs);
+        _logger.d('Successfully added ${serverConfigs.length} built-in server configurations');
+      } catch (e) {
+        _logger.w('Built-in server configuration failed: $e');
+      }
 
       // 3. Add additional free provider configs if needed
       if (configs.length < count) {
-        final additionalConfigs = await _freeProvider.getFreeVpnConfigs();
-        configs.addAll(additionalConfigs.take(count - configs.length));
+        try {
+          final additionalConfigs = await _freeProvider.getFreeVpnConfigs();
+          configs.addAll(additionalConfigs.take(count - configs.length));
+          _logger.d('Added ${additionalConfigs.length} additional free configurations');
+        } catch (e) {
+          _logger.w('Additional free provider configs failed: $e');
+        }
       }
 
       _availableConfigs = configs;
-      _logger.i('Got ${configs.length} VPN configurations');
+      _logger.i('Successfully generated ${configs.length} VPN configurations');
       return configs;
 
     } catch (e, stack) {
       _logger.e('Failed to get multiple configs', error: e, stackTrace: stack);
+      // Return empty list but don't fail initialization
       return [];
     }
   }
@@ -258,21 +291,35 @@ class AutoVpnConfigManager {
   /// Private helper methods
   Future<void> _ensureInitialized() async {
     if (!_isInitialized) {
-      await initialize();
+      if (_isInitializing) {
+        _logger.w('Initialization in progress, waiting...');
+        // Wait for initialization to complete
+        while (_isInitializing && !_isInitialized) {
+          await Future.delayed(Duration(milliseconds: 100));
+        }
+      } else {
+        await initialize();
+      }
     }
   }
   Future<void> _preGenerateConfigs() async {
     try {
       _logger.d('Pre-generating VPN configurations...');
-
-      // Generate a few configs to have them ready
-      final configs = await getMultipleConfigs(count: 3);
+      // Generate a few configs to have them ready (using internal method)
+      final configs = await _getMultipleConfigsInternal(count: 3);
       _availableConfigs = configs;
 
-      _logger.d('Pre-generated ${configs.length} configurations');
+      if (configs.isEmpty) {
+        _logger.w('No configurations were pre-generated, but initialization will continue');
+      } else {
+        _logger.d('Pre-generated ${configs.length} configurations successfully');
+      }
 
     } catch (e, stack) {
-      _logger.w('Failed to pre-generate configs', error: e, stackTrace: stack);
+      _logger.w('Failed to pre-generate configs, but initialization will continue', 
+                error: e, stackTrace: stack);
+      // Don't throw - allow initialization to complete even if pre-generation fails
+      _availableConfigs = [];
     }
   }
   // Getters
@@ -285,5 +332,6 @@ class AutoVpnConfigManager {
     _availableConfigs.clear();
     _currentConfig = null;
     _isInitialized = false;
+    _isInitializing = false;
   }
 }
