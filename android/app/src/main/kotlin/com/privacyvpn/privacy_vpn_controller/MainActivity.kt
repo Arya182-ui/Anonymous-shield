@@ -38,8 +38,8 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Initialize Timber logging for debug builds
-        if (true) { // Always enable logging for development
+        // Initialize Timber logging for debug builds only
+        if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
         

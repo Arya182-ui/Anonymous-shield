@@ -4,7 +4,6 @@ import '../../platform/channels/proxy_channel.dart';
 import '../../data/models/proxy_config.dart';
 import '../../data/models/connection_status.dart';
 import '../../data/repositories/config_repository.dart';
-import '../../core/constants/app_constants.dart';
 
 class ProxyManager {
   static final ProxyManager _instance = ProxyManager._internal();

@@ -73,11 +73,17 @@ android {
                 "proguard-rules.pro"
             )
             
+            // Security: Additional hardening
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
+            manifestPlaceholders["allowBackup"] = "false"
+            manifestPlaceholders["allowDebugging"] = "false"
+            
             // Use release signing config if available, fallback to debug for development
             signingConfig = if (project.hasProperty("KEYSTORE_FILE")) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
+            }
             }
         }
         

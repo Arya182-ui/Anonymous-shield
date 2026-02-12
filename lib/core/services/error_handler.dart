@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import '../constants/app_constants.dart';
 
 class ProductionErrorHandler {
@@ -16,7 +15,7 @@ class ProductionErrorHandler {
   );
 
   StreamController<ErrorReport>? _errorReportStream;
-  List<ErrorReport> _errorHistory = [];
+  final List<ErrorReport> _errorHistory = [];
   
   /// Initialize error handling system
   Future<void> initialize() async {

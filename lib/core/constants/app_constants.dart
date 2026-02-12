@@ -106,7 +106,5 @@ You maintain complete control over your privacy.
   static const String proxyNotificationChannelName = 'Proxy Status';
   
   // Testing & Debug (Production: false)
-  static const bool enableDetailedLogging = false;
-  static const bool skipVpnPermissionCheck = false;
   static const bool enableAutoDemoConnections = false; // Disable auto demo connections
 }

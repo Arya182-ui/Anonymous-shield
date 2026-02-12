@@ -31,7 +31,21 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:allowClearUserData="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
+        android:extractNativeLibs="true">
+        
+        <!-- Security: Prevent debugging in production -->
+        <meta-data 
+            android:name="android.allow_debugging" 
+            android:value="false" />
+            
+        <!-- Security: Disable auto-backup for privacy -->
+        <meta-data 
+            android:name="android.allow_backup" 
+            android:value="false" />
         
         <activity
             android:name=".MainActivity"

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import '../../platform/channels/vpn_channel.dart';
 import '../../data/models/vpn_config.dart';
