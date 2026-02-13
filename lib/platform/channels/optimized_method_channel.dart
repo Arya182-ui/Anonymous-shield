@@ -209,11 +209,12 @@ class OptimizedMethodChannel {
     final streamInterval = interval ?? Duration(seconds: 1);
     
     return Stream.periodic(streamInterval, (_) async {
-      return await invokeMethod<T>(
+      final result = await invokeMethod<T>(
         method: method,
         arguments: arguments,
         useCache: false, // Don't cache streaming data
       );
+      return result!;
     }).asyncMap((future) => future);
   }
   

@@ -28,7 +28,7 @@ class ProductionLogger {
   
   // Performance tracking
   final Map<String, PerformanceMetric> _performanceMetrics = {};
-  final List<LogEvent> _recentEvents = [];
+  final List<Map<String, dynamic>> _recentEvents = [];
   
   // Log filtering for production
   Level _minLogLevel = Level.info;
@@ -206,18 +206,18 @@ class ProductionLogger {
       final sanitizedMessage = _sanitizeMessage(message);
       final sanitizedData = _sanitizeData(data);
 
-      // Create log event
-      final logEvent = LogEvent(
-        level: level,
-        message: sanitizedMessage,
-        timestamp: DateTime.now(),
-        error: error,
-        stackTrace: stackTrace,
-        data: sanitizedData,
-      );
+      // Create log event data
+      final logEventData = {
+        'level': level.toString(),
+        'message': sanitizedMessage,
+        'timestamp': DateTime.now(),
+        'error': error,
+        'stackTrace': stackTrace,
+        'data': sanitizedData,
+      };
 
       // Add to recent events
-      _recentEvents.add(logEvent);
+      _recentEvents.add(logEventData);
       if (_recentEvents.length > 100) {
         _recentEvents.removeAt(0);
       }
@@ -379,8 +379,8 @@ class ProductionLogger {
       // Clean old archives (keep last 7 days)
       await _cleanOldArchives();
 
-    } catch (e) {
-      e('Log rotation failed: $e');
+    } catch (ex) {
+      _logger.e('Log rotation failed: $ex');
     }
   }
 
@@ -401,8 +401,8 @@ class ProductionLogger {
           }
         }
       }
-    } catch (e) {
-      e('Archive cleanup failed: $e');
+    } catch (ex) {
+      _logger.e('Archive cleanup failed: $ex');
     }
   }
 
@@ -437,8 +437,8 @@ class ProductionLogger {
       // Write performance analysis to file
       _writePerformanceAnalysis(analysisData);
 
-    } catch (e) {
-      e('Performance analysis failed: $e');
+    } catch (ex) {
+      _logger.e('Performance analysis failed: $ex');
     }
   }
 
@@ -486,7 +486,7 @@ class ProductionLogger {
     final exportLimit = limit ?? 50;
     return _recentEvents
         .take(exportLimit)
-        .map((event) => event.toMap())
+        .map((event) => event)
         .toList();
   }
 
@@ -508,36 +508,6 @@ class ProductionLogger {
 
 /// Security logging levels
 enum SecurityLevel { info, low, medium, high, critical }
-
-/// Log event model
-class LogEvent {
-  final Level level;
-  final String message;
-  final DateTime timestamp;
-  final Object? error;
-  final StackTrace? stackTrace;
-  final Map<String, dynamic>? data;
-
-  const LogEvent({
-    required this.level,
-    required this.message,
-    required this.timestamp,
-    this.error,
-    this.stackTrace,
-    this.data,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'level': level.toString(),
-      'message': message,
-      'timestamp': timestamp.toIso8601String(),
-      'error': error?.toString(),
-      'has_stack_trace': stackTrace != null,
-      'data': data,
-    };
-  }
-}
 
 /// Performance metric tracking
 class PerformanceMetric {
@@ -585,7 +555,7 @@ class ProductionFilter extends LogFilter {
 class ProductionPrinter extends LogPrinter {
   @override
   List<String> log(LogEvent event) {
-    final timestamp = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(event.time);
+    final timestamp = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(DateTime.now());
     final level = event.level.toString().toUpperCase();
     
     return [

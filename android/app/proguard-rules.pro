@@ -1,32 +1,75 @@
-# Keep main entry points
--keep class com.privacyvpn.privacy_vpn_controller.MainActivity
--keep class com.privacyvpn.privacy_vpn_controller.MainApplication
+# Privacy VPN Controller - Production ProGuard Rules
+# Comprehensive obfuscation and optimization for security and performance
 
-# Keep VPN service classes
--keep class com.privacyvpn.privacy_vpn_controller.vpn.** { *; }
--keep class com.privacyvpn.privacy_vpn_controller.proxy.** { *; }
-
-# Keep method channel handlers (Flutter needs these)
--keep class com.privacyvpn.privacy_vpn_controller.channels.** { *; }
-
-# Keep Flutter plugin classes
+# ====== FLUTTER & DART SPECIFIC RULES ======
+# Keep Flutter engine classes
+-keep class io.flutter.app.** { *; }
+-keep class io.flutter.plugin.** { *; }
+-keep class io.flutter.util.** { *; }
+-keep class io.flutter.view.** { *; }
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
+-keep class androidx.lifecycle.DefaultLifecycleObserver
 
-# Keep WireGuard native library interfaces
+# Keep method channel classes and methods
+-keep class * extends io.flutter.plugin.common.MethodCallHandler { *; }
+-keep class * implements io.flutter.plugin.common.MethodChannel$MethodCallHandler { *; }
+
+# ====== VPN & WIREGUARD SPECIFIC RULES ======
+# Keep WireGuard native interface
 -keep class com.wireguard.** { *; }
--keepclassmembers class com.wireguard.** { *; }
+-keep class golang.org.x.** { *; }
+-keep interface com.wireguard.** { *; }
 
-# Keep native method signatures
--keepclasseswithmembernames class * {
+# Keep VPN service classes
+-keep class * extends android.net.VpnService { *; }
+-keep class * extends android.app.Service { *; }
+
+# Keep our VPN implementation
+-keep class com.privacyvpn.privacy_vpn_controller.vpn.** { *; }
+-keep class com.privacyvpn.privacy_vpn_controller.proxy.** { *; }
+-keep class com.privacyvpn.privacy_vpn_controller.security.** { *; }
+-keep class com.privacyvpn.privacy_vpn_controller.anonymity.** { *; }
+
+# Keep method channel handlers
+-keep class com.privacyvpn.privacy_vpn_controller.channels.** { *; }
+
+# Keep main application entry points
+-keep class com.privacyvpn.privacy_vpn_controller.MainActivity { *; }
+
+# ====== SECURITY & ENCRYPTION RULES ======
+# Keep BouncyCastle crypto providers
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
+
+# Keep security crypto classes
+-keep class androidx.security.crypto.** { *; }
+
+# Keep native cryptographic methods
+-keepclassmembers class * {
     native <methods>;
 }
 
-# Keep enum values
--keepclassmembers enum * {
-    public static **[] values();
-    public static ** valueOf(java.lang.String);
-}
+# ====== NETWORKING RULES ======
+# Keep OkHttp classes
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+
+# Keep networking security
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+
+# ====== JSON & SERIALIZATION RULES ======
+# Keep Moshi classes
+-keep class com.squareup.moshi.** { *; }
+-keep interface com.squareup.moshi.** { *; }
+-keepnames @com.squareup.moshi.JsonClass class *
+
+# Keep data classes and models
+-keep @com.squareup.moshi.JsonClass class * { *; }
+-keep class * extends java.lang.Enum { *; }
 
 # Keep serialization classes
 -keepclassmembers class * implements java.io.Serializable {
@@ -38,63 +81,99 @@
     java.lang.Object readResolve();
 }
 
-# Remove debug and logging code in release builds
--assumenosideeffects class android.util.Log {
-    public static int v(...);
-    public static int d(...);
-    public static int i(...);
-    public static int w(...);
-    public static int e(...);
+# ====== COROUTINES & KOTLIN RULES ======
+# Keep Kotlin coroutines
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# Keep Kotlin metadata
+-keepattributes *Annotation*
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+-dontwarn kotlin.**
+-keepclassmembers class **$WhenMappings {
+    <fields>;
 }
 
--assumenosideeffects class timber.log.Timber {
-    public static void v(...);
-    public static void d(...);
-    public static void i(...);
-    public static void w(...);
-    public static void e(...);
+# ====== ANDROID SYSTEM RULES ======
+# Keep Android Parcelable classes
+-keep class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator *;
 }
 
-# Optimize and obfuscate
+# Keep Android Service and BroadcastReceiver
+-keep public class * extends android.app.Service
+-keep public class * extends android.content.BroadcastReceiver
+-keep public class * extends android.content.ContentProvider
+
+# Keep enum values
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# ====== PERFORMANCE OPTIMIZATION ======
+# Enable aggressive optimization
 -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
 -optimizationpasses 5
 -allowaccessmodification
 -dontpreverify
--repackageclasses ''
--flattenpackagehierarchy ''
 
-# Remove unused code
--dontwarn javax.annotation.**
--dontwarn kotlin.Unit
--dontwarn kotlin.jvm.internal.**
-
-# Keep crash reporting integration points (if added later)
-# -keep class com.crashlytics.** { *; }
-# -keep class com.google.firebase.crashlytics.** { *; }
-
-# Security: Remove source file names and line numbers from stack traces
--renamesourcefileattribute SourceFile
--keepattributes SourceFile,LineNumberTable
-
-# Keep security-critical classes from being renamed (for easier debugging)
--keepnames class com.privacyvpn.privacy_vpn_controller.business_logic.services.SecurityService
--keepnames class com.privacyvpn.privacy_vpn_controller.data.repositories.ConfigurationRepository
-
-# Network security - keep certificate pinning classes
--keep class okhttp3.** { *; }
--keep class okio.** { *; }
-
-# Keep custom exceptions for better error reporting
--keep class com.privacyvpn.privacy_vpn_controller.core.exceptions.** { *; }
-
-# Privacy protection - remove sensitive debug information
--assumenosideeffects class java.lang.System {
-    public static void out.print*(...);
-    public static void err.print*(...);
+# Remove debug information in release
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int w(...);
+    public static int d(...);
+    public static int e(...);
 }
 
-# Remove test code from release builds
+# Remove Timber logging in release
+-assumenosideeffects class timber.log.Timber {
+    public static *** v(...);
+    public static *** d(...);
+    public static *** i(...);
+    public static *** w(...);
+    public static *** e(...);
+}
+
+# ====== SECURITY HARDENING ======
+# Obfuscate class names aggressively
+-repackageclasses 'a'
+
+# Remove unused code
+-dontwarn **
+
+# Security: Remove source file names and line numbers
+-renamesourcefileattribute SourceFile
+
+# ====== THIRD-PARTY LIBRARY RULES ======
+# AndroidX rules
+-keep class androidx.** { *; }
+-keep interface androidx.** { *; }
+-dontwarn androidx.**
+
+# ====== REMOVE DEBUG CODE ======
+# Remove debug and testing code
+-assumenosideeffects class * {
+    public void debug(...);
+    public void trace(...);
+}
+
+# Remove BuildConfig debug fields
+-assumenosideeffects class *.BuildConfig {
+    public static final boolean DEBUG return false;
+}
+
+# Remove test frameworks
 -assumenosideeffects class junit.** { *; }
 -assumenosideeffects class org.junit.** { *; }
 -assumenosideeffects class androidx.test.** { *; }
 -assumenosideeffects class org.mockito.** { *; }
+
+# Remove sensitive debug information
+-assumenosideeffects class java.lang.System {
+    public static void out.print*(...);
+    public static void err.print*(...);
+}

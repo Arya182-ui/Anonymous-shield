@@ -23,4 +23,17 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }
 
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        google()
+        mavenCentral()
+        // WireGuard Android Libraries Repository
+        maven { url = uri("https://maven.pkg.github.com/AnyKernel3/wireguard-android") }
+        maven { 
+            url = uri("https://jitpack.io")
+        }
+    }
+}
+
 include(":app")

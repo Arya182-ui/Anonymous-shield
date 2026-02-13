@@ -19,9 +19,9 @@ import com.privacyvpn.privacy_vpn_controller.channels.PerformanceMethodChannelHa
 class MainActivity : FlutterActivity() {
     
     companion object {
-        private const val VPN_CHANNEL = "com.privacyvpn.vpn_controller/vpn"
-        private const val PROXY_CHANNEL = "com.privacyvpn.vpn_controller/proxy"
-        private const val SYSTEM_CHANNEL = "com.privacyvpn.vpn_controller/system"
+        private const val VPN_CHANNEL = "com.privacyvpn.privacy_vpn_controller/vpn"
+        private const val PROXY_CHANNEL = "com.privacyvpn.privacy_vpn_controller/proxy"
+        private const val SYSTEM_CHANNEL = "com.privacyvpn.privacy_vpn_controller/system"
         private const val PERFORMANCE_CHANNEL = "privacy_vpn_controller/performance"
         private const val VPN_PERMISSION_REQUEST = 1001
     }

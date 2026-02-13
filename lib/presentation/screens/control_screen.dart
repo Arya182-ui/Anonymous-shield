@@ -14,6 +14,7 @@ import 'package:privacy_vpn_controller/data/models/proxy_config.dart';
 import 'package:privacy_vpn_controller/data/models/connection_status.dart';
 // New built-in servers imports
 import '../../business_logic/managers/auto_vpn_config_manager.dart';
+import '../../business_logic/managers/enhanced_vpn_manager.dart';
 import '../../business_logic/providers/built_in_server_providers.dart';
 import 'vpn_main_screen_example.dart';
 

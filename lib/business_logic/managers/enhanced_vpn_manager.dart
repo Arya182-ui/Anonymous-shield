@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
+import 'package:wireguard_flutter_plus/wireguard_flutter_plus.dart';
 import '../../platform/channels/vpn_method_channel.dart';
 import '../../platform/channels/anonymous_method_channel.dart';
+import '../../platform/services/wireguard_vpn_service.dart';
 import '../../data/models/vpn_config.dart';
 import '../../data/models/proxy_config.dart';
 import '../../data/models/connection_status.dart';
@@ -19,6 +21,7 @@ class EnhancedVpnManager {
 
   final ConfigRepository _configRepo = ConfigRepository();
   final Logger _logger = Logger();
+  final WireGuardVpnService _wireGuardService = WireGuardVpnService();
   
   StreamController<ConnectionStatus>? _statusController;
   StreamController<VpnConnectionStatus>? _vpnStatusController;
@@ -30,6 +33,7 @@ class EnhancedVpnManager {
   AnonymousChain? _currentChain;
   Timer? _rotationTimer;
   Timer? _statusUpdateTimer;
+  StreamSubscription? _wireGuardStageSubscription;
   
   bool _isInitialized = false;
   bool _isConnecting = false;
@@ -41,6 +45,9 @@ class EnhancedVpnManager {
     try {
       await _configRepo.initialize();
       
+      // Initialize WireGuard service
+      await _wireGuardService.initialize();
+      
       _statusController = StreamController<ConnectionStatus>.broadcast();
       _statusStream = _statusController!.stream;
       
@@ -49,6 +56,9 @@ class EnhancedVpnManager {
       
       _connectionInfoController = StreamController<VpnConnectionInfo>.broadcast();
       _connectionInfoStream = _connectionInfoController!.stream;
+      
+      // Listen to WireGuard stage changes
+      _wireGuardStageSubscription = _wireGuardService.stageStream.listen(_onWireGuardStageChanged);
       
       // Set up native method call handlers
       VpnMethodChannel.setMethodCallHandler(_handleVpnMethodCall);
@@ -119,22 +129,23 @@ class EnhancedVpnManager {
       _isConnecting = true;
       _logger.i('Starting VPN connection to ${config.name}');
       
-      // Check permission first
-      if (!await requestPermission()) {
-        _logger.w('VPN permission denied');
-        return false;
-      }
-      
       // Disconnect any existing connection
       if (isConnected) {
         await disconnect();
       }
       
-      // Start VPN through native service
-      final result = await VpnMethodChannel.startVpn(config);
+      // Start VPN through WireGuard service (uses wireguard_flutter_plus plugin)
+      final success = await _wireGuardService.connect(config);
       
-      if (result['success'] == true) {
+      if (success) {
         _currentConfig = config;
+        
+        // Emit connected status
+        _emitLegacyStatus(ConnectionStatus(
+          vpnStatus: VpnStatus.connected,
+          currentServerName: config.name,
+          connectedAt: DateTime.now(),
+        ));
         
         // Start server rotation if enabled
         if (config.autoRotate) {
@@ -144,7 +155,8 @@ class EnhancedVpnManager {
         _logger.i('VPN connected successfully: ${config.name}');
         return true;
       } else {
-        _logger.e('VPN connection failed: ${result['error']}');
+        _logger.e('VPN connection failed');
+        _emitLegacyStatus(ConnectionStatus(vpnStatus: VpnStatus.error));
         return false;
       }
       
@@ -275,16 +287,24 @@ class EnhancedVpnManager {
       _rotationTimer?.cancel();
       _rotationTimer = null;
       
-      // Disconnect through native service
+      // Disconnect through WireGuard service
+      await _wireGuardService.disconnect();
+      
+      // Also try native channels for anonymous chain
       if (_currentChain != null) {
-        await AnonymousMethodChannel.stopAnonymousChain();
-      } else {
-        await VpnMethodChannel.stopVpn();
+        try {
+          await AnonymousMethodChannel.stopAnonymousChain();
+        } catch (e) {
+          _logger.w('Anonymous chain stop failed (may not be running): $e');
+        }
       }
       
       // Clear current connections
       _currentConfig = null;
       _currentChain = null;
+      
+      // Emit disconnected status
+      _emitLegacyStatus(ConnectionStatus(vpnStatus: VpnStatus.disconnected));
       
       _logger.i('Disconnected successfully');
       return true;
@@ -403,8 +423,53 @@ class EnhancedVpnManager {
   void dispose() {
     _rotationTimer?.cancel();
     _statusUpdateTimer?.cancel();
+    _wireGuardStageSubscription?.cancel();
     _statusController?.close();
+    _wireGuardService.dispose();
     _logger.i('Enhanced VPN Manager disposed');
+  }
+
+  /// Handle WireGuard stage changes from plugin
+  void _onWireGuardStageChanged(VpnStage stage) {
+    _logger.d('WireGuard stage changed: $stage');
+    
+    VpnStatus vpnStatus;
+    switch (stage) {
+      case VpnStage.connected:
+        vpnStatus = VpnStatus.connected;
+        break;
+      case VpnStage.connecting:
+        vpnStatus = VpnStatus.connecting;
+        break;
+      case VpnStage.disconnecting:
+        vpnStatus = VpnStatus.disconnecting;
+        break;
+      case VpnStage.disconnected:
+        vpnStatus = VpnStatus.disconnected;
+        if (_currentConfig != null) {
+          // Unexpected disconnect
+          _currentConfig = null;
+          _rotationTimer?.cancel();
+        }
+        break;
+      case VpnStage.denied:
+      case VpnStage.noConnection:
+        vpnStatus = VpnStatus.error;
+        break;
+      default:
+        vpnStatus = VpnStatus.disconnected;
+    }
+    
+    _emitLegacyStatus(ConnectionStatus(
+      vpnStatus: vpnStatus,
+      currentServerName: _currentConfig?.name ?? '',
+      connectedAt: vpnStatus == VpnStatus.connected ? DateTime.now() : null,
+    ));
+  }
+
+  /// Emit status update to legacy stream
+  void _emitLegacyStatus(ConnectionStatus status) {
+    _statusController?.add(status);
   }
 }
 

@@ -126,19 +126,19 @@ android {
             isRenderscriptDebuggable = false
         }
         
-        // Staging build type for testing production features
-        create("staging") {
-            initWith(getByName("release"))
-            isDebuggable = true
-            versionNameSuffix = "-STAGING"
-            applicationIdSuffix = ".staging"
-            
-            buildConfigField("boolean", "ENABLE_LOGGING", "true")
-            buildConfigField("String", "SERVER_ENVIRONMENT", "\"staging\"")
-            
-            // Use debug signing for easier testing
-            signingConfig = signingConfigs.getByName("debug")
-        }
+        // Staging build type temporarily disabled due to connectivity_plus plugin compatibility
+        // create("staging") {
+        //     initWith(getByName("release"))
+        //     isDebuggable = true
+        //     versionNameSuffix = "-STAGING"
+        //     applicationIdSuffix = ".staging"
+        //     
+        //     buildConfigField("boolean", "ENABLE_LOGGING", "true")
+        //     buildConfigField("String", "SERVER_ENVIRONMENT", "\"staging\"")
+        //     
+        //     // Use debug signing for easier testing
+        //     signingConfig = signingConfigs.getByName("debug")
+        // }
     }
     
     // Source sets for native code
@@ -181,11 +181,6 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.squareup.okio:okio:3.9.1")
     
-    // WireGuard Integration (Production-ready)
-    implementation("com.wireguard.android:tunnel:1.0.20231018") {
-        exclude(group = "androidx.collection", module = "collection")
-    }
-    
     // JSON Processing and Serialization
     implementation("com.squareup.moshi:moshi:1.15.1")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
@@ -195,12 +190,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     
-    // Security and Encryption
+    // Network Security - stable version
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
-    
-    // Network Security
-    implementation("androidx.security:security-identity-credential:1.0.0-alpha05")
     
     // Logging (Timber for development, structured logging for production)
     implementation("com.jakewharton.timber:timber:5.0.1")

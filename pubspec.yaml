@@ -22,7 +22,7 @@ dependencies:
   # VPN & Network Core
   network_info_plus: ^5.0.0
   internet_connection_checker: ^1.0.0+1
-  flutter_vpn: ^2.0.0
+  wireguard_flutter_plus: ^1.0.1
   
   # Secure Storage & Encryption
   flutter_secure_storage: ^9.2.0
@@ -33,7 +33,6 @@ dependencies:
   # Network & HTTP
   dio: ^5.4.0
   connectivity_plus: ^6.0.0
-  dio_certificate_pinning: ^4.1.0
   
   # File Management
   path_provider: ^2.1.2
@@ -57,14 +56,11 @@ dependencies:
   intl: ^0.19.0
   logger: ^2.0.2+1
   
-  # Production Monitoring & Analytics
+  # Production Monitoring (Privacy-First - No Firebase/Analytics)
   sentry_flutter: ^7.18.0
-  firebase_crashlytics: ^3.4.18
-  firebase_performance: ^0.9.4+6
   
   # Validation & Security
   validators: ^3.0.0
-  ip: ^2.1.1
   
   # Device Info & Platform
   device_info_plus: ^12.3.0

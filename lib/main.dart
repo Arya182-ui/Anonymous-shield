@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 import 'dart:async';
 
 // Core imports
@@ -43,7 +44,7 @@ Future<void> _initializeAndRunApp() async {
     // Initialize production logging first
     final logger = ProductionLogger();
     await logger.initialize(
-      minLevel: AppConstants.debugMode ? Level.debug : Level.info,
+      minLevel: Level.info,
       enableFileLogging: true,
       enablePerformanceLogging: true,
       enableSecurityLogging: true,
@@ -318,10 +319,10 @@ class PrivacyVpnControllerApp extends ConsumerWidget {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       
-      // Theme configuration with system theme detection
-      theme: AppTheme.lightTheme,
+      // Theme configuration with dark theme (privacy-focused design)
+      theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark, // Always use dark theme for privacy focus
       
       // Internationalization setup
       locale: Locale('en', 'US'),
