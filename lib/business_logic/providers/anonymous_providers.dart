@@ -30,16 +30,25 @@ final proxyManagerProvider = Provider<ProxyManager>((ref) {
   return ProxyManager();
 });
 
-// VPN status stream provider
+// VPN status stream provider - safely handles uninitialized VpnManager
 final vpnStatusProvider = StreamProvider<ConnectionStatus>((ref) {
   final vpnManager = ref.watch(vpnManagerProvider);
-  return vpnManager.statusStream;
+  try {
+    return vpnManager.statusStream;
+  } catch (e) {
+    // Return a single disconnected status if manager not initialized yet
+    return Stream.value(ConnectionStatus.disconnected());
+  }
 });
 
-// Proxy status stream provider
+// Proxy status stream provider - safely handles uninitialized ProxyManager
 final proxyStatusProvider = StreamProvider<ProxyStatus>((ref) {
   final proxyManager = ref.watch(proxyManagerProvider);
-  return proxyManager.statusStream;
+  try {
+    return proxyManager.statusStream;
+  } catch (e) {
+    return Stream.value(ProxyStatus.disabled);
+  }
 });
 
 // Quick access to predefined chains
@@ -60,10 +69,7 @@ class ActiveAnonymousChainNotifier extends StateNotifier<AnonymousChain?> {
   ActiveAnonymousChainNotifier() : super(null);
 
   void setChain(AnonymousChain chain) {
-    // Only set if not already connecting/connected to prevent conflicts
-    if (state?.status != ChainStatus.connecting) {
-      state = chain;
-    }
+    state = chain;
   }
 
   void updateChainStatus(ChainStatus status) {

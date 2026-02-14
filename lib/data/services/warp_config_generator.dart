@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
-// Crypto removed - will be added when needed
+import 'dart:typed_data';
+import 'package:cryptography/cryptography.dart';
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import '../models/vpn_config.dart';
@@ -20,7 +21,7 @@ class WarpConfigGenerator {
       _logger.i('Generating Cloudflare WARP configuration...');
       
       // Step 1: Generate key pair
-      final keyPair = _generateWireGuardKeyPair();
+      final keyPair = await _generateWireGuardKeyPair();
       
       // Step 2: Register with Cloudflare
       final registration = await _registerWithCloudflare(keyPair['public']!);
@@ -31,17 +32,40 @@ class WarpConfigGenerator {
       }
       
       // Step 3: Create VPN configuration
+      final serverPubKey = registration['server_public_key'] as String? 
+          ?? registration['public_key'] as String? 
+          ?? '';
+      
+      if (serverPubKey.isEmpty) {
+        _logger.e('No server public key in WARP registration response');
+        return null;
+      }
+      
+      final rawEndpoint = registration['endpoint'] as String? ?? _warpEndpoint;
+      
+      // Parse host and port separately to avoid duplicate port in config
+      String host;
+      int port;
+      if (rawEndpoint.contains(':')) {
+        final parts = rawEndpoint.split(':');
+        host = parts[0];
+        port = int.tryParse(parts.last) ?? 2408;
+      } else {
+        host = rawEndpoint;
+        port = 2408;
+      }
+      
       final config = VpnConfig(
         id: 'cloudflare-warp-${DateTime.now().millisecondsSinceEpoch}',
         name: 'Cloudflare WARP (Free)',
-        serverAddress: _warpEndpoint,
-        port: 2408,
+        serverAddress: host,
+        port: port,
         privateKey: keyPair['private']!,
-        publicKey: registration['server_public_key'] as String,
+        publicKey: serverPubKey,
         allowedIPs: ['0.0.0.0/0', '::/0'],
         dnsServers: ['1.1.1.1', '1.0.0.1'], // Cloudflare DNS
         createdAt: DateTime.now(),
-        endpoint: _warpEndpoint,
+        endpoint: '$host:$port',
       );
       
       _logger.i('WARP configuration generated successfully');
@@ -56,28 +80,48 @@ class WarpConfigGenerator {
   /// Register device with Cloudflare WARP API
   Future<Map<String, dynamic>?> _registerWithCloudflare(String publicKey) async {
     try {
+      // Use the current Cloudflare WARP client API endpoint
       final response = await _dio.post(
-        '$_warpApiUrl/v0a884/reg',
+        '$_warpApiUrl/v0a2169/reg',
         data: {
           'key': publicKey,
           'install_id': _generateInstallId(),
           'fcm_token': '',
-          'tos': DateTime.now().toIso8601String(),
+          'tos': DateTime.now().toUtc().toIso8601String(),
+          'model': 'Android',
           'type': 'Android',
-          'locale': 'en',
+          'locale': 'en_US',
         },
         options: Options(
           headers: {
             'Content-Type': 'application/json',
+            'CF-Client-Version': 'a-6.11-2223',
             'User-Agent': 'okhttp/3.12.1',
           },
+          validateStatus: (status) => status != null && status < 500,
         ),
       );
       
       if (response.statusCode == 200) {
-        return response.data['result'];
+        final data = response.data;
+        if (data is Map<String, dynamic> && data.containsKey('config')) {
+          final config = data['config'];
+          final peers = config?['peers'];
+          if (peers is List && peers.isNotEmpty) {
+            return {
+              'server_public_key': peers[0]['public_key'],
+              'endpoint': peers[0]['endpoint']?['host'] ?? _warpEndpoint,
+            };
+          }
+        }
+        // Fallback: return data directly if structure is different
+        if (data is Map<String, dynamic> && data.containsKey('result')) {
+          return Map<String, dynamic>.from(data['result']);
+        }
+        return data is Map<String, dynamic> ? data : null;
       }
       
+      _logger.w('WARP registration returned status: ${response.statusCode}');
       return null;
     } catch (e) {
       _logger.e('Cloudflare registration failed', error: e);
@@ -85,27 +129,29 @@ class WarpConfigGenerator {
     }
   }
   
-  /// Generate WireGuard key pair
-  Map<String, String> _generateWireGuardKeyPair() {
-    // Generate 32 random bytes for private key
-    final random = Random.secure();
-    final privateKeyBytes = List<int>.generate(32, (_) => random.nextInt(256));
+  /// Generate WireGuard key pair using proper Curve25519
+  Future<Map<String, String>> _generateWireGuardKeyPair() async {
+    final algorithm = X25519();
+    final keyPair = await algorithm.newKeyPair();
     
-    // Clamp private key for Curve25519
+    // Extract raw private key bytes - copy to mutable Uint8List
+    // (SensitiveBytes from cryptography package are unmodifiable)
+    final immutableBytes = await keyPair.extractPrivateKeyBytes();
+    final privateKeyBytes = Uint8List.fromList(immutableBytes);
+    
+    // Clamp for WireGuard X25519
     privateKeyBytes[0] &= 248;
     privateKeyBytes[31] &= 127;
     privateKeyBytes[31] |= 64;
-    
     final privateKey = base64Encode(privateKeyBytes);
     
-    // For simplicity, generate mock public key
-    // In production, calculate actual Curve25519 public key
-    final publicKeyBytes = List<int>.generate(32, (_) => random.nextInt(256));
-    final publicKey = base64Encode(publicKeyBytes);
+    // Extract public key bytes - also copy to mutable list
+    final publicKey = await keyPair.extractPublicKey();
+    final publicKeyB64 = base64Encode(Uint8List.fromList(publicKey.bytes));
     
     return {
       'private': privateKey,
-      'public': publicKey,
+      'public': publicKeyB64,
     };
   }
   

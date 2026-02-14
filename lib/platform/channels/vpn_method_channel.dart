@@ -217,9 +217,38 @@ class VpnMethodChannel {
     }
   }
 
-  /// Set up method call handler for status updates from native side
+  /// Registered method call handlers (multiple managers can register)
+  static final List<Future<dynamic> Function(MethodCall call)> _handlers = [];
+  static bool _dispatcherRegistered = false;
+
+  /// Register a method call handler (additive - does NOT overwrite previous handlers)
+  /// Multiple managers (VpnManager, WireGuardManager, SecurityManager, etc.)
+  /// can all register handlers and ALL will receive native callbacks.
   static void setMethodCallHandler(Future<dynamic> Function(MethodCall call) handler) {
-    _channel.setMethodCallHandler(handler);
+    _handlers.add(handler);
+    // Register the central dispatcher only once
+    if (!_dispatcherRegistered) {
+      _channel.setMethodCallHandler(_dispatchToAllHandlers);
+      _dispatcherRegistered = true;
+    }
+  }
+
+  /// Remove a previously registered handler
+  static void removeMethodCallHandler(Future<dynamic> Function(MethodCall call) handler) {
+    _handlers.remove(handler);
+  }
+
+  /// Central dispatcher that forwards native calls to ALL registered handlers
+  static Future<dynamic> _dispatchToAllHandlers(MethodCall call) async {
+    dynamic lastResult;
+    for (final handler in List.of(_handlers)) {
+      try {
+        lastResult = await handler(call);
+      } catch (e) {
+        _logger.e('Handler error for ${call.method}: $e');
+      }
+    }
+    return lastResult;
   }
 
   /// Start WireGuard Tunnel

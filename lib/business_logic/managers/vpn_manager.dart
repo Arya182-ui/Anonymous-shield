@@ -55,6 +55,11 @@ class VpnManager {
   
   /// Get status stream
   Stream<ConnectionStatus> get statusStream {
+    if (_statusController == null) {
+      // Return an empty stream if not initialized yet to prevent crashes
+      _statusController = StreamController<ConnectionStatus>.broadcast();
+      _statusStream = _statusController!.stream;
+    }
     _statusStream ??= _statusController!.stream;
     return _statusStream!;
   }
@@ -95,11 +100,9 @@ class VpnManager {
           return false;
         }
       } on MissingPluginException catch (e) {
-        _logger.w('VPN native service not available: $e');
-        // For development, we can simulate a successful connection
-        _currentConfig = config;
-        _logger.i('Simulated VPN connection (native service not available)');
-        return true;
+        _logger.e('VPN native service not available: $e');
+        // Do NOT simulate connection - return false as connection genuinely failed
+        return false;
       }   
     } catch (e) {
       _logger.e('Failed to connect to VPN: $e');
@@ -166,11 +169,10 @@ class VpnManager {
           return false;
         }
       } on MissingPluginException catch (e) {
-        _logger.w('VPN native service not available for disconnect: $e');
-        // Simulate successful disconnect
+        _logger.e('VPN native service not available for disconnect: $e');
+        // Still clear local state even if native call fails
         _currentConfig = null;
         _currentChain = null;
-        _logger.i('Simulated VPN disconnect (native service not available)');
         return true;
       }
       

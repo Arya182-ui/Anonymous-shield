@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/app_initializer.dart';
 import 'control_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -67,23 +68,28 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     _pulseController.repeat(reverse: true);
   }
 
-  void _navigateToHome() {
-    Future.delayed(AppConstants.splashDuration, () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => ControlScreen(),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
-      }
-    });
+  void _navigateToHome() async {
+    // Show splash animation for minimum duration AND wait for background init
+    final minSplash = Future.delayed(AppConstants.splashDuration);
+    final bgInit = AppInitializer().ready;
+    
+    // Wait for BOTH: minimum visual time + background init complete
+    await Future.wait([minSplash, bgInit]);
+    
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => ControlScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 800),
+        ),
+      );
+    }
   }
 
   @override
@@ -151,10 +157,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                Icon(
-                                  Icons.security,
-                                  size: 64,
-                                  color: customColors.vpnConnected,
+                                ClipOval(
+                                  child: Image.asset(
+                                    'assets/images/logo.jpg',
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Icon(
+                                      Icons.security,
+                                      size: 64,
+                                      color: customColors.vpnConnected,
+                                    ),
+                                  ),
                                 ),
                                 // Spinning Ring
                                 SizedBox(

@@ -103,9 +103,12 @@ class WireGuardVpnService {
       
       _logger.d('WireGuard config:\n$wgQuickConfig');
       
-      // Start VPN
+      // Start VPN - avoid duplicate port if serverAddress already contains :port
+      final serverAddr = config.serverAddress.contains(':')
+          ? config.serverAddress
+          : '${config.serverAddress}:${config.port}';
       await _wireGuard!.startVpn(
-        serverAddress: '${config.serverAddress}:${config.port}',
+        serverAddress: serverAddr,
         wgQuickConfig: wgQuickConfig,
         providerBundleIdentifier: 'com.privacyvpn.privacy_vpn_controller',
       );
@@ -202,7 +205,11 @@ class WireGuardVpnService {
       buffer.writeln('PresharedKey = ${config.presharedKey}');
     }
     
-    buffer.writeln('Endpoint = ${config.serverAddress}:${config.port}');
+    // Avoid duplicate port if serverAddress already contains :port
+    final endpoint = config.serverAddress.contains(':')
+        ? config.serverAddress
+        : '${config.serverAddress}:${config.port}';
+    buffer.writeln('Endpoint = $endpoint');
     buffer.writeln('AllowedIPs = ${config.allowedIPs.join(', ')}');
     buffer.writeln('PersistentKeepalive = 25');
     

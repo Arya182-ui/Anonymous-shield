@@ -18,6 +18,7 @@ class ProductionErrorHandler {
   bool _isInitialized = false;
   bool _crashReportingEnabled = true;  // Can be disabled for privacy
   bool _errorLoggingEnabled = true;
+  bool _sentryInitialized = false;  // Only true if Sentry DSN was provided
   
   // Error tracking
   final List<ErrorReport> _recentErrors = [];
@@ -53,6 +54,7 @@ class ProductionErrorHandler {
             options.beforeSend = _filterSensitiveData;
           },
         );
+        _sentryInitialized = true;
         _logger.i('Crash reporting initialized');
       }
       
@@ -88,8 +90,8 @@ class ProductionErrorHandler {
         informationCollector: details.informationCollector,
       );
       
-      // Report to crash service
-      if (_crashReportingEnabled) {
+      // Report to crash service (only if Sentry was actually initialized)
+      if (_crashReportingEnabled && _sentryInitialized) {
         Sentry.captureException(
           details.exception,
           stackTrace: details.stack,
@@ -110,7 +112,7 @@ class ProductionErrorHandler {
         context: 'Platform Dispatcher',
       );
       
-      if (_crashReportingEnabled) {
+      if (_crashReportingEnabled && _sentryInitialized) {
         Sentry.captureException(error, stackTrace: stack);
       }
       
@@ -132,7 +134,7 @@ class ProductionErrorHandler {
       context: 'Async Zone',
     );
     
-    if (_crashReportingEnabled) {
+    if (_crashReportingEnabled && _sentryInitialized) {
       Sentry.captureException(error, stackTrace: stack);
     }
   }

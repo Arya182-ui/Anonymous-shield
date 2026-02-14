@@ -72,6 +72,10 @@ class ProxyMethodChannel {
       
       _logger.i('Proxy start result: $result');
       return result ?? false;
+    } on MissingPluginException {
+      // Native proxy implementation not available - rethrow so caller can handle
+      _logger.w('Native proxy implementation not available');
+      rethrow;
     } catch (e, stack) {
       _logger.e('Failed to start proxy', error: e, stackTrace: stack);
       _handleProxyError({'error': e.toString()});

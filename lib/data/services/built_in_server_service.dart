@@ -278,7 +278,7 @@ class BuiltInServerService {
 
       _userLocation = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
-        timeLimit: Duration(seconds: 10),
+        timeLimit: Duration(seconds: 3),
       );
       
       _logger.d('Updated user location: ${_userLocation?.latitude}, ${_userLocation?.longitude}');

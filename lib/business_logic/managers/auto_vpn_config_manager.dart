@@ -2,6 +2,7 @@ import 'package:logger/logger.dart';
 import '../../data/services/built_in_server_service.dart';
 import '../../data/services/free_vpn_provider.dart';
 import '../../data/models/vpn_config.dart';
+import '../../platform/services/wireguard_vpn_service.dart';
 // Built-in server import handled by service
 /// Automatic VPN Configuration Manager
 /// यह service automatic server selection और configuration को handle करती है
@@ -13,6 +14,8 @@ class AutoVpnConfigManager {
   final Logger _logger = Logger();
   final BuiltInServerService _serverService = BuiltInServerService();
   final FreeVpnProvider _freeProvider = FreeVpnProvider();
+  final WireGuardVpnService _wireGuardService = WireGuardVpnService();
+  bool _isConnected = false;
 
   bool _isInitialized = false;
   bool _isInitializing = false;
@@ -34,11 +37,12 @@ class AutoVpnConfigManager {
     try {
       _logger.i('Initializing Auto VPN Configuration Manager...');
 
-      // Load built-in servers
+      // Load built-in servers (lightweight JSON parse)
       await _serverService.loadBuiltInServers();
 
-      // Pre-generate some free configs
-      await _preGenerateConfigs();
+      // Skip pre-generation at startup – configs are generated on-demand
+      // when oneClickConnect() or getBestAvailableConfig() is called.
+      // This saves 10-20s of geolocation timeouts and WARP API calls.
 
       _isInitialized = true;
       _logger.i('Auto VPN Configuration Manager initialized successfully');
@@ -212,15 +216,81 @@ class AutoVpnConfigManager {
         return false;
       }
 
-      // यहाँ आप अपने VPN connection logic को call करेंगे
-      // Example: await vpnManager.connect(config);
+      // Actually establish VPN connection via WireGuard service
+      final initialized = await _wireGuardService.initialize();
+      if (!initialized) {
+        _logger.e('Failed to initialize WireGuard service for one-click connect');
+        return false;
+      }
+
+      final connected = await _wireGuardService.connect(config);
+      if (!connected) {
+        _logger.e('WireGuard connection failed for config: ${config.name}');
+        return false;
+      }
 
       _currentConfig = config;
+      _isConnected = true;
       _logger.i('One-click connect successful: ${config.name}');
       return true;
 
     } catch (e, stack) {
       _logger.e('One-click connect failed', error: e, stackTrace: stack);
+      _isConnected = false;
+      return false;
+    }
+  }
+
+  /// Disconnect current VPN connection
+  Future<bool> disconnect() async {
+    try {
+      _logger.i('Disconnecting VPN...');
+      final success = await _wireGuardService.disconnect();
+      if (success) {
+        _currentConfig = null;
+        _isConnected = false;
+        _logger.i('VPN disconnected successfully');
+      }
+      return success;
+    } catch (e, stack) {
+      _logger.e('VPN disconnect failed', error: e, stackTrace: stack);
+      return false;
+    }
+  }
+
+  /// Check if currently connected
+  bool get isVpnConnected => _isConnected;
+
+  /// Connect with a specific config
+  Future<bool> connectWithConfig(VpnConfig config) async {
+    try {
+      _logger.i('Connecting with config: ${config.name}');
+
+      final initialized = await _wireGuardService.initialize();
+      if (!initialized) {
+        _logger.e('Failed to initialize WireGuard service');
+        return false;
+      }
+
+      // Disconnect any existing connection first
+      if (_isConnected) {
+        await _wireGuardService.disconnect();
+      }
+
+      final connected = await _wireGuardService.connect(config);
+      if (!connected) {
+        _logger.e('WireGuard connection failed for: ${config.name}');
+        return false;
+      }
+
+      _currentConfig = config;
+      _isConnected = true;
+      _logger.i('Connected to: ${config.name}');
+      return true;
+
+    } catch (e, stack) {
+      _logger.e('Connection with config failed', error: e, stackTrace: stack);
+      _isConnected = false;
       return false;
     }
   }

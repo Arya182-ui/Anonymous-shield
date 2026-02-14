@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../business_logic/managers/auto_vpn_config_manager.dart';
 import '../../business_logic/providers/built_in_server_providers.dart';
+import '../../business_logic/providers/anonymous_providers.dart';
 import '../../presentation/widgets/built_in_servers_widget.dart';
 import '../../data/models/vpn_config.dart';
 /// Example VPN main screen with built-in servers integration
@@ -433,24 +434,39 @@ class _VpnMainScreenState extends ConsumerState<VpnMainScreen> {
       final warpConfig = await ref.read(warpConfigProvider.future);
 
       if (warpConfig != null) {
-        ref.read(activeVpnConfigProvider.notifier).state = warpConfig;
-        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        final success = await _autoManager.connectWithConfig(warpConfig);
+        
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = warpConfig;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to Cloudflare WARP'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Connected to Cloudflare WARP'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('WARP tunnel could not be established');
+        }
+      } else {
+        throw Exception('WARP config generation failed');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('WARP connection failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('WARP connection failed: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+      });
     }
   }
   Future<void> _handleStreamingConnect() async {
@@ -460,18 +476,31 @@ class _VpnMainScreenState extends ConsumerState<VpnMainScreen> {
       final config = await _autoManager.getStreamingOptimizedConfig();
 
       if (config != null) {
-        ref.read(activeVpnConfigProvider.notifier).state = config;
-        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        final success = await _autoManager.connectWithConfig(config);
+        
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = config;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to streaming server'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Connected to streaming server: ${config.name}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('Streaming VPN tunnel failed');
+        }
+      } else {
+        throw Exception('No streaming server available');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+      });
     }
   }
   Future<void> _handleRandomConnect() async {
@@ -481,30 +510,52 @@ class _VpnMainScreenState extends ConsumerState<VpnMainScreen> {
       final config = await _autoManager.rotateToNextServer();
 
       if (config != null) {
-        ref.read(activeVpnConfigProvider.notifier).state = config;
-        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        final success = await _autoManager.connectWithConfig(config);
+        
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = config;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to ${config.name}'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Connected to ${config.name}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('Random server tunnel failed');
+        }
+      } else {
+        throw Exception('No servers available');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+      });
     }
   }
-  void _handleDisconnect() {
+  Future<void> _handleDisconnect() async {
+    try {
+      ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnecting;
+      await _autoManager.disconnect();
+    } catch (_) {}
+    
     ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
     ref.read(activeVpnConfigProvider.notifier).state = null;
+    // Clear anonymous chain state too for unified button
+    ref.read(activeAnonymousChainProvider.notifier).clearChain();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Disconnected'),
-        backgroundColor: Colors.orange,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Disconnected'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
   Future<void> _connectToSpecificServer(server) async {
     try {
@@ -514,25 +565,40 @@ class _VpnMainScreenState extends ConsumerState<VpnMainScreen> {
       final config = await serverService.generateConfigForServer(server);
 
       if (config != null) {
-        ref.read(activeVpnConfigProvider.notifier).state = config;
-        ref.read(selectedServerProvider.notifier).state = server;
-        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        final success = await _autoManager.connectWithConfig(config);
+        
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = config;
+          ref.read(selectedServerProvider.notifier).state = server;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to ${server.name}'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Connected to ${server.name}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('VPN tunnel failed for ${server.name}');
+        }
+      } else {
+        throw Exception('Config generation failed for ${server.name}');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Connection failed'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+      });
     }
   }
   Future<void> _refreshConfigurations() async {

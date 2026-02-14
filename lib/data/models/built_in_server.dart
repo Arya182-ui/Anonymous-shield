@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:json_annotation/json_annotation.dart';
 import 'vpn_config.dart';
 
@@ -46,14 +47,24 @@ class BuiltInServer {
   VpnConfig toVpnConfig() {
     // Note: Built-in servers should have real pre-configured keys
     // In production, these would be actual WireGuard key pairs for your servers
+    final privateKey = _getConfiguredPrivateKey();
+    final publicKey = _getConfiguredPublicKey();
+    
+    // Validate that we have real keys before creating config
+    if (privateKey.startsWith('REPLACE_WITH') || publicKey.startsWith('REPLACE_WITH')) {
+      throw StateError(
+        'Server "$name" has placeholder WireGuard keys. '
+        'Configure real keys in built_in_servers.json or use auto-generated WARP configs.'
+      );
+    }
+    
     return VpnConfig(
       id: id,
       name: name,
       serverAddress: serverAddress,
       port: port,
-      // WARNING: These are placeholder keys - replace with real keys in production
-      privateKey: _getConfiguredPrivateKey(),
-      publicKey: _getConfiguredPublicKey(),
+      privateKey: privateKey,
+      publicKey: publicKey,
       allowedIPs: ['0.0.0.0/0'],
       dnsServers: ['1.1.1.1', '1.0.0.1'],
       createdAt: DateTime.now(),
@@ -78,16 +89,16 @@ class BuiltInServer {
   }
   
   double distanceFrom(double userLat, double userLon) {
-    // Simple distance calculation
+    // Haversine formula for accurate distance calculation
     const double earthRadius = 6371; // km
-    double dLat = (latitude - userLat) * (3.14159 / 180);
-    double dLon = (longitude - userLon) * (3.14159 / 180);
+    double dLat = (latitude - userLat) * (pi / 180);
+    double dLon = (longitude - userLon) * (pi / 180);
     
-    double a = (dLat / 2) * (dLat / 2) +
-        (userLat * 3.14159 / 180) * (latitude * 3.14159 / 180) *
-        (dLon / 2) * (dLon / 2);
+    double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(userLat * pi / 180) * cos(latitude * pi / 180) *
+        sin(dLon / 2) * sin(dLon / 2);
     
-    double c = 2 * earthRadius * (a < 1 ? (a / 2) : 1);
+    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
     return earthRadius * c;
   }
 }
