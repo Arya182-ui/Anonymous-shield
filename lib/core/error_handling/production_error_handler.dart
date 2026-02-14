@@ -18,6 +18,7 @@ class ProductionErrorHandler {
   bool _isInitialized = false;
   bool _crashReportingEnabled = true;  // Can be disabled for privacy
   bool _errorLoggingEnabled = true;
+  bool _sentryInitialized = false;  // Only true if Sentry DSN was provided
   
   // Error tracking
   final List<ErrorReport> _recentErrors = [];
@@ -53,6 +54,7 @@ class ProductionErrorHandler {
             options.beforeSend = _filterSensitiveData;
           },
         );
+        _sentryInitialized = true;
         _logger.i('Crash reporting initialized');
       }
       
@@ -88,8 +90,8 @@ class ProductionErrorHandler {
         informationCollector: details.informationCollector,
       );
       
-      // Report to crash service
-      if (_crashReportingEnabled) {
+      // Report to crash service (only if Sentry was actually initialized)
+      if (_crashReportingEnabled && _sentryInitialized) {
         Sentry.captureException(
           details.exception,
           stackTrace: details.stack,
@@ -110,7 +112,7 @@ class ProductionErrorHandler {
         context: 'Platform Dispatcher',
       );
       
-      if (_crashReportingEnabled) {
+      if (_crashReportingEnabled && _sentryInitialized) {
         Sentry.captureException(error, stackTrace: stack);
       }
       
@@ -132,7 +134,7 @@ class ProductionErrorHandler {
       context: 'Async Zone',
     );
     
-    if (_crashReportingEnabled) {
+    if (_crashReportingEnabled && _sentryInitialized) {
       Sentry.captureException(error, stackTrace: stack);
     }
   }
@@ -173,16 +175,16 @@ class ProductionErrorHandler {
       final severity = _determineErrorSeverity(error);
       switch (severity) {
         case ErrorSeverity.critical:
-          _logger.fatal('CRITICAL ERROR [$context]: $error', error: error, stackTrace: stackTrace);
+          _logger.f('CRITICAL ERROR [$context]: $error', error: error, stackTrace: stackTrace);
           break;
         case ErrorSeverity.high:
-          _logger.error('ERROR [$context]: $error', error: error, stackTrace: stackTrace);
+          _logger.e('ERROR [$context]: $error', error: error, stackTrace: stackTrace);
           break;
         case ErrorSeverity.medium:
-          _logger.warn('WARNING [$context]: $error', error: error, stackTrace: stackTrace);
+          _logger.w('WARNING [$context]: $error', error: error, stackTrace: stackTrace);
           break;
         case ErrorSeverity.low:
-          _logger.info('INFO [$context]: $error', error: error, stackTrace: stackTrace);
+          _logger.i('INFO [$context]: $error', error: error, stackTrace: stackTrace);
           break;
       }
       
@@ -235,9 +237,10 @@ class ProductionErrorHandler {
     if (event.contexts.containsKey('os') && event.contexts['os'] != null) {
       // Keep basic OS info but remove detailed system info
       event = event.copyWith(
-        contexts: Map.from(event.contexts)
-          ..remove('device')  // Remove device-specific info
-          ..remove('app')     // Remove app-specific details
+        // Temporarily disabled due to API compatibility issues
+        // contexts: Map.from(event.contexts)
+        //   ..remove('device')  // Remove device-specific info
+        //   ..remove('app')     // Remove app-specific details
       );
     }
     
@@ -307,7 +310,7 @@ class ProductionErrorHandler {
         'severity': report.severity.toString(),
       };
       
-      await _secureStorage.write(
+      await _secureStorage.store(
         'error_${report.timestamp.millisecondsSinceEpoch}',
         errorData.toString(),
       );
@@ -333,7 +336,7 @@ class ProductionErrorHandler {
           .toList();
       
       if (frequentErrors.isNotEmpty) {
-        _logger.warn('Detected ${frequentErrors.length} frequent error patterns');
+        _logger.w('Detected ${frequentErrors.length} frequent error patterns');
         
         // Report pattern to monitoring if enabled
         if (_crashReportingEnabled) {

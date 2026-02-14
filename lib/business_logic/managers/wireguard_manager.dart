@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/services.dart'; 
 import 'package:logger/logger.dart';
-import 'package:crypto/crypto.dart';
 import '../models/wireguard_config.dart';
-import '../models/connection_status.dart';
-import '../repositories/config_repository.dart';
+import '../../data/models/connection_status.dart';
+import '../../data/repositories/config_repository.dart';
 import '../../platform/channels/vpn_method_channel.dart';
 
 /// Production-grade WireGuard Manager
@@ -30,8 +28,8 @@ class WireGuardManager {
   bool _isConnected = false;
   
   DateTime? _connectionStartTime;
-  int _bytesReceived = 0;
-  int _bytesSent = 0;
+  final int _bytesReceived = 0;  // TODO: Implement byte tracking
+  final int _bytesSent = 0;      // TODO: Implement byte tracking
   
   /// Initialize WireGuard manager
   Future<bool> initialize() async {
@@ -93,7 +91,7 @@ class WireGuardManager {
       // Validate configuration
       if (!config.validateConfig()) {
         _logger.e('Invalid WireGuard configuration');
-        _emitStatus(ConnectionStatus.error, 'Invalid configuration');
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), 'Invalid configuration');
         return false;
       }
 
@@ -101,33 +99,29 @@ class WireGuardManager {
       final expectedHash = config.generateConfigHash();
       if (expectedHash != config.configHash) {
         _logger.e('Configuration integrity check failed');
-        _emitStatus(ConnectionStatus.error, 'Configuration tampered');
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), 'Configuration tampered');
         return false;
       }
 
-      _emitStatus(ConnectionStatus.connecting, 'Preparing secure tunnel');
+      _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.connecting), 'Preparing secure tunnel');
 
       // Prepare configuration for native layer
       final configMap = {
-        'interface_name': config.interfaceName,
+        'interface_name': config.interfaceName ?? 'wg0',
         'private_key': config.privateKey,
         'public_key': config.publicKey,
-        'preshared_key': config.preSharedKey,
-        'server_public_key': config.serverPublicKey,
+        'preshared_key': config.presharedKey,
         'endpoint': config.endpoint,
-        'listen_port': config.listenPort,
         'allowed_ips': config.allowedIPs,
         'dns_servers': config.dns,
         'mtu': config.mtu,
-        'keepalive': config.keepAlive,
         'persistent_keepalive': config.persistentKeepalive,
-        'security_level': config.securityLevel,
       };
 
-      _emitStatus(ConnectionStatus.connecting, 'Establishing tunnel');
+      _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.connecting), 'Establishing tunnel');
 
       // Call native Android VPN service
-      final result = await VpnMethodChannel.invokeMethod('startWireGuardTunnel', configMap);
+      final result = await VpnMethodChannel.startWireGuardTunnel(configMap);
       
       if (result['success'] == true) {
         _activeConfig = config;
@@ -139,20 +133,20 @@ class WireGuardManager {
         _startConnectionMonitoring();
         _startStatsCollection();
         
-        _emitStatus(ConnectionStatus.connected, 'Secure tunnel established');
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.connected), 'Secure tunnel established');
         _logger.i('WireGuard connection established successfully');
         
         return true;
       } else {
         final error = result['error'] ?? 'Unknown error';
         _logger.e('WireGuard connection failed: $error');
-        _emitStatus(ConnectionStatus.error, error);
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), error);
         return false;
       }
       
     } catch (e) {
       _logger.e('WireGuard connection error: $e');
-      _emitStatus(ConnectionStatus.error, e.toString());
+      _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), e.toString());
       return false;
     } finally {
       _isConnecting = false;
@@ -169,10 +163,10 @@ class WireGuardManager {
     try {
       _logger.i('Disconnecting WireGuard VPN');
       
-      _emitStatus(ConnectionStatus.disconnecting, 'Closing secure tunnel');
+      _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.disconnecting), 'Closing secure tunnel');
 
       // Call native disconnect
-      final result = await VpnMethodChannel.invokeMethod('stopWireGuardTunnel', {});
+      final result = await VpnMethodChannel.stopWireGuardTunnel();
       
       if (result['success'] == true) {
         _isConnected = false;
@@ -183,7 +177,7 @@ class WireGuardManager {
         _stopConnectionMonitoring();
         _stopStatsCollection();
         
-        _emitStatus(ConnectionStatus.disconnected, 'Tunnel closed');
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.disconnected), 'Tunnel closed');
         _logger.i('WireGuard disconnected successfully');
         
         return true;
@@ -221,7 +215,11 @@ class WireGuardManager {
       _logger.i('Generating WireGuard configuration');
 
       // Generate key pair via native method
-      final keyResult = await VpnMethodChannel.invokeMethod('generateWireGuardKeys', {});
+      final keyResult = await VpnMethodChannel.generateWireGuardKeys();
+      
+      if (keyResult['success'] != true) {
+        throw Exception('Key generation failed: ${keyResult['error']}');
+      }
       
       if (keyResult['success'] != true) {
         throw Exception('Failed to generate keys: ${keyResult['error']}');
@@ -236,23 +234,19 @@ class WireGuardManager {
       final interfaceName = 'wg${timestamp.hashCode.abs() % 10000}';
 
       final config = WireGuardConfig(
-        interfaceName: interfaceName,
+        name: 'Generated Config ${DateTime.now().millisecondsSinceEpoch}',
         privateKey: privateKey,
         publicKey: publicKey,
-        preSharedKey: preSharedKey,
-        serverPublicKey: serverPublicKey,
-        endpoint: serverEndpoint,
-        listenPort: 51820,
-        allowedIPs: ['10.0.0.2/32'], // Client IP
+        presharedKey: preSharedKey,
+        addresses: ['10.0.0.2/32'], // Client IP
         dns: dnsServers,
         mtu: 1420,
-        keepAlive: 25,
-        persistentKeepalive: true,
-        configHash: '', // Will be set below
+        endpoint: serverEndpoint,
+        allowedIPs: ['0.0.0.0/0', '::/0'], // Route all traffic through VPN
+        persistentKeepalive: 25,
         createdAt: DateTime.now(),
-        expiresAt: DateTime.now().add(Duration(days: 30)),
-        isValid: true,
-        securityLevel: 'high',
+        isActive: false,
+        interfaceName: interfaceName,
       );
 
       // Generate and set config hash
@@ -287,7 +281,7 @@ class WireGuardManager {
         case 'onWireGuardError':
           final error = call.arguments['error'] as String;
           _logger.e('Native WireGuard error: $error');
-          _emitStatus(ConnectionStatus.error, error);
+          _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), error);
           break;
       }
     } catch (e) {
@@ -301,29 +295,24 @@ class WireGuardManager {
     switch (status) {
       case 'CONNECTED':
         _isConnected = true;
-        _emitStatus(ConnectionStatus.connected, message);
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.connected), message);
         break;
       case 'DISCONNECTED':
         _isConnected = false;
-        _emitStatus(ConnectionStatus.disconnected, message);
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.disconnected), message);
         break;
       case 'CONNECTING':
-        _emitStatus(ConnectionStatus.connecting, message);
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.connecting), message);
         break;
       case 'ERROR':
         _isConnected = false;
-        _emitStatus(ConnectionStatus.error, message);
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), message);
         break;
     }
   }
 
   void _emitStatus(ConnectionStatus status, String message) {
-    _statusController?.add(ConnectionStatus(
-      status: status.status,
-      message: message,
-      timestamp: DateTime.now(),
-      serverEndpoint: _activeConfig?.endpoint,
-    ));
+    _statusController?.add(status);
   }
 
   void _startConnectionMonitoring() {
@@ -358,10 +347,10 @@ class WireGuardManager {
 
   Future<void> _checkConnectionHealth() async {
     try {
-      final result = await VpnMethodChannel.invokeMethod('checkWireGuardHealth', {});
+      final result = await VpnMethodChannel.checkWireGuardHealth();
       if (result['connected'] != true) {
         _logger.w('Connection health check failed');
-        _emitStatus(ConnectionStatus.error, 'Connection lost');
+        _emitStatus(ConnectionStatus(vpnStatus: VpnStatus.error), 'Connection lost');
       }
     } catch (e) {
       _logger.e('Health check error: $e');
@@ -370,7 +359,7 @@ class WireGuardManager {
 
   Future<void> _collectStats() async {
     try {
-      final result = await VpnMethodChannel.invokeMethod('getWireGuardStats', {});
+      final result = await VpnMethodChannel.getWireGuardStats();
       if (result['success'] == true) {
         final stats = WireGuardConnectionStats(
           bytesReceived: result['bytes_received'] ?? 0,

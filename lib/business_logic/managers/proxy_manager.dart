@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import '../../platform/channels/proxy_channel.dart';
 import '../../data/models/proxy_config.dart';
@@ -42,10 +43,22 @@ class ProxyManager {
     return _statusStream!;
   }
   
+  /// Whether native proxy implementation is available
+  bool _nativeProxyAvailable = true;
+
+  /// Check if native proxy support is available
+  bool get isNativeProxyAvailable => _nativeProxyAvailable;
+
   /// Start single proxy connection
   Future<bool> startProxy(ProxyConfig config) async {
     try {
       _logger.i('Starting proxy connection: ${config.name}');
+      
+      // If we already know native proxy isn't available, skip immediately
+      if (!_nativeProxyAvailable) {
+        _logger.w('Native proxy not available, skipping proxy: ${config.name}');
+        return false;
+      }
       
       // Update status to connecting
       _statusController?.add(ProxyStatus.enabled);
@@ -67,12 +80,18 @@ class ProxyManager {
         return true;
       } else {
         _logger.e('Proxy connection failed: ${config.name}');
-        _statusController?.add(ProxyStatus.error);
+        _statusController?.add(ProxyStatus.disabled);
         return false;
       }
+    } on MissingPluginException {
+      // Native proxy implementation not available
+      _nativeProxyAvailable = false;
+      _logger.w('Native proxy not implemented, proxy feature unavailable');
+      _statusController?.add(ProxyStatus.disabled);
+      return false;
     } catch (e, stack) {
       _logger.e('Proxy connection error', error: e, stackTrace: stack);
-      _statusController?.add(ProxyStatus.error);
+      _statusController?.add(ProxyStatus.disabled);
       return false;
     }
   }

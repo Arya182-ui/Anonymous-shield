@@ -217,9 +217,96 @@ class VpnMethodChannel {
     }
   }
 
-  /// Set up method call handler for status updates from native side
+  /// Registered method call handlers (multiple managers can register)
+  static final List<Future<dynamic> Function(MethodCall call)> _handlers = [];
+  static bool _dispatcherRegistered = false;
+
+  /// Register a method call handler (additive - does NOT overwrite previous handlers)
+  /// Multiple managers (VpnManager, WireGuardManager, SecurityManager, etc.)
+  /// can all register handlers and ALL will receive native callbacks.
   static void setMethodCallHandler(Future<dynamic> Function(MethodCall call) handler) {
-    _channel.setMethodCallHandler(handler);
+    _handlers.add(handler);
+    // Register the central dispatcher only once
+    if (!_dispatcherRegistered) {
+      _channel.setMethodCallHandler(_dispatchToAllHandlers);
+      _dispatcherRegistered = true;
+    }
+  }
+
+  /// Remove a previously registered handler
+  static void removeMethodCallHandler(Future<dynamic> Function(MethodCall call) handler) {
+    _handlers.remove(handler);
+  }
+
+  /// Central dispatcher that forwards native calls to ALL registered handlers
+  static Future<dynamic> _dispatchToAllHandlers(MethodCall call) async {
+    dynamic lastResult;
+    for (final handler in List.of(_handlers)) {
+      try {
+        lastResult = await handler(call);
+      } catch (e) {
+        _logger.e('Handler error for ${call.method}: $e');
+      }
+    }
+    return lastResult;
+  }
+
+  /// Start WireGuard Tunnel
+  static Future<Map<String, dynamic>> startWireGuardTunnel(Map<String, dynamic> configMap) async {
+    try {
+      _logger.i('Starting WireGuard tunnel');
+      final result = await _channel.invokeMethod('startWireGuardTunnel', configMap);
+      return Map<String, dynamic>.from(result);
+    } catch (e) {
+      _logger.e('Failed to start WireGuard tunnel: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Stop WireGuard Tunnel
+  static Future<Map<String, dynamic>> stopWireGuardTunnel() async {
+    try {
+      _logger.i('Stopping WireGuard tunnel');
+      final result = await _channel.invokeMethod('stopWireGuardTunnel');
+      return Map<String, dynamic>.from(result);
+    } catch (e) {
+      _logger.e('Failed to stop WireGuard tunnel: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Generate WireGuard Keys
+  static Future<Map<String, dynamic>> generateWireGuardKeys() async {
+    try {
+      _logger.d('Generating WireGuard keys');
+      final result = await _channel.invokeMethod('generateWireGuardKeys');
+      return Map<String, dynamic>.from(result);
+    } catch (e) {
+      _logger.e('Failed to generate WireGuard keys: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Check WireGuard Health
+  static Future<Map<String, dynamic>> checkWireGuardHealth() async {
+    try {
+      final result = await _channel.invokeMethod('checkWireGuardHealth');
+      return Map<String, dynamic>.from(result);
+    } catch (e) {
+      _logger.e('Failed to check WireGuard health: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Get WireGuard Stats
+  static Future<Map<String, dynamic>> getWireGuardStats() async {
+    try {
+      final result = await _channel.invokeMethod('getWireGuardStats');
+      return Map<String, dynamic>.from(result);
+    } catch (e) {
+      _logger.e('Failed to get WireGuard stats: $e');
+      return {'success': false, 'error': e.toString()};
+    }
   }
 
   /// Handle status updates from native Android service

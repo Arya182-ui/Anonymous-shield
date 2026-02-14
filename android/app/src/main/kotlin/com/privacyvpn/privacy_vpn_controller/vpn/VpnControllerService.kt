@@ -4,27 +4,22 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.system.OsConstants
 import androidx.core.app.NotificationCompat
-import com.wireguard.android.backend.GoBackend
-import com.wireguard.android.backend.Tunnel
-import com.wireguard.config.Config
-import com.wireguard.config.Interface
-import com.wireguard.config.Peer
-import com.wireguard.config.InetNetwork
-import com.wireguard.config.ParseException
 import kotlinx.coroutines.*
 import timber.log.Timber
 import java.io.IOException
-import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * VPN Controller Service for Privacy VPN Controller.
+ * This service manages VPN connections using the wireguard_flutter_plus plugin.
+ * The actual WireGuard tunnel management is delegated to the Flutter plugin.
+ */
 class VpnControllerService : VpnService() {
     
     companion object {
@@ -42,10 +37,8 @@ class VpnControllerService : VpnService() {
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     
-    // WireGuard backend
-    private lateinit var wireGuardBackend: GoBackend
+    // VPN interface descriptor (managed by WireGuard plugin)
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var currentTunnel: SimpleTunnel? = null
     
     // Connection monitoring
     private var connectionMonitor: ConnectionMonitor? = null
@@ -60,20 +53,8 @@ class VpnControllerService : VpnService() {
         
         createNotificationChannel()
         
-        try {
-            wireGuardBackend = GoBackend(applicationContext)
-            Timber.d("WireGuard backend initialized")
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to initialize WireGuard backend")
-            stopSelf()
-            return
-        }
-        
         connectionMonitor = ConnectionMonitor(this)
         killSwitch = KillSwitch(this)
-        
-        // Set up channel notifier
-        // Note: Channel handler will be set when MainActivity initializes
         
         isRunning.set(true)
     }
@@ -86,6 +67,7 @@ class VpnControllerService : VpnService() {
                 return START_NOT_STICKY
             }
             else -> {
+                @Suppress("DEPRECATION")
                 val config = intent?.getSerializableExtra("vpn_config") as? VpnConfiguration
                 if (config != null) {
                     startVpnConnection(config)
@@ -107,7 +89,8 @@ class VpnControllerService : VpnService() {
     }
     
     /**
-     * Start VPN connection with given configuration
+     * Start VPN connection with given configuration.
+     * The actual WireGuard tunnel is managed by wireguard_flutter_plus plugin.
      */
     private fun startVpnConnection(config: VpnConfiguration) {
         serviceScope.launch {
@@ -116,15 +99,6 @@ class VpnControllerService : VpnService() {
                 
                 // Store current configuration
                 currentConfig.set(config)
-                
-                // Build WireGuard configuration
-                val wireGuardConfig = buildWireGuardConfig(config)
-                
-                // Create tunnel instance
-                currentTunnel = SimpleTunnel(config.name)
-                
-                // Start WireGuard tunnel
-                startWireGuardTunnel(wireGuardConfig)
                 
                 // Start connection monitoring
                 startConnectionMonitoring()
@@ -172,9 +146,6 @@ class VpnControllerService : VpnService() {
                 // Stop connection monitoring
                 connectionMonitor?.stopMonitoring()
                 
-                // Stop WireGuard tunnel
-                stopWireGuardTunnel()
-                
                 // Clear current configuration
                 currentConfig.set(null)
                 
@@ -182,6 +153,7 @@ class VpnControllerService : VpnService() {
                 notifyConnectionState(VpnState.DISCONNECTED, config)
                 
                 // Stop foreground service
+                @Suppress("DEPRECATION")
                 stopForeground(true)
                 stopSelf()
                 
@@ -192,86 +164,6 @@ class VpnControllerService : VpnService() {
             }
         }
     }
-    
-    /**
-     * Build WireGuard configuration from VpnConfiguration
-     */
-    private fun buildWireGuardConfig(config: VpnConfiguration): Config {
-        val interfaceBuilder = Interface.Builder().apply {
-            parsePrivateKey(config.privateKey)
-            
-            // Add IP addresses
-            config.interfaceAddress?.let { address ->
-                addAddress(InetNetwork.parse(address))
-            }
-            
-            // Add DNS servers
-            config.dnsServers.forEach { dns ->
-                addDnsServer(InetAddress.getByName(dns))
-            }
-            
-            // Set MTU if specified
-            config.mtu?.let { setMtu(it) }
-        }
-        
-        val peerBuilder = Peer.Builder().apply {
-            parsePublicKey(config.publicKey)
-            parseEndpoint("${config.serverAddress}:${config.port}")
-            
-            // Add allowed IPs
-            config.allowedIPs.forEach { allowedIP ->
-                addAllowedIp(InetNetwork.parse(allowedIP))
-            }
-            
-            // Add pre-shared key if available
-            config.presharedKey?.let { parsePreSharedKey(it) }
-            
-            // Set persistent keepalive
-            if (config.persistentKeepalive > 0) {
-                setPersistentKeepalive(config.persistentKeepalive)
-            }
-        }
-        
-        return Config.Builder()
-            .setInterface(interfaceBuilder.build())
-            .addPeer(peerBuilder.build())
-            .build()
-    }
-    
-    /**
-     * Start WireGuard tunnel
-     */
-    private fun startWireGuardTunnel(config: Config) {
-        val tunnel = currentTunnel ?: throw IOException("No tunnel instance available")
-        
-        try {
-            val state = wireGuardBackend.setState(tunnel, Tunnel.State.UP, config)
-            if (state != Tunnel.State.UP) {
-                throw IOException("Failed to bring tunnel up, state: $state")
-            }
-            Timber.d("WireGuard tunnel started successfully")
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to start WireGuard tunnel")
-            throw e
-        }
-    }
-    
-    /**
-     * Stop WireGuard tunnel
-     */
-    private fun stopWireGuardTunnel() {
-        currentTunnel?.let { tunnel ->
-            try {
-                wireGuardBackend.setState(tunnel, Tunnel.State.DOWN, null)
-                Timber.d("WireGuard tunnel stopped")
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to stop WireGuard tunnel")
-            } finally {
-                currentTunnel = null
-            }
-        }
-    }
-
     
     /**
      * Start connection monitoring
@@ -303,23 +195,18 @@ class VpnControllerService : VpnService() {
      */
     private fun startStatisticsMonitoring() {
         statisticsJob = serviceScope.launch {
-            while (isActive && currentTunnel != null) {
+            while (isActive) {
                 try {
-                    currentTunnel?.let { tunnel ->
-                        // Get statistics from WireGuard backend
-                        val statistics = wireGuardBackend.getStatistics(tunnel)
-                        
-                        // Convert to map for Flutter
-                        val statsMap = mapOf(
-                            "bytesIn" to 0L,
-                            "bytesOut" to 0L,
-                            "packetsIn" to 0L,
-                            "packetsOut" to 0L
-                        )
-                        
-                        // Notify Flutter app with statistics
-                        notifyStatistics(statsMap)
-                    }
+                    // Basic statistics - actual stats come from wireguard_flutter_plus plugin
+                    val statsMap = mapOf(
+                        "bytesIn" to 0L,
+                        "bytesOut" to 0L,
+                        "packetsIn" to 0L,
+                        "packetsOut" to 0L
+                    )
+                    
+                    // Notify Flutter app with statistics
+                    notifyStatistics(statsMap)
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to retrieve statistics")
                 }

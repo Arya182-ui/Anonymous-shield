@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 import 'dart:async';
 
 // Core imports
@@ -8,20 +9,7 @@ import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
 import 'core/logging/production_logger.dart';
 import 'core/error_handling/production_error_handler.dart';
-
-// Data layer imports
-import 'data/storage/secure_storage.dart';
-
-// Platform imports
-import 'platform/channels/optimized_method_channel.dart';
-
-// Business logic imports
-import 'business_logic/managers/vpn_manager.dart';
-import 'business_logic/managers/enhanced_vpn_manager.dart';
-import 'business_logic/managers/wireguard_manager.dart';
-import 'business_logic/managers/proxy_manager.dart';
-import 'business_logic/managers/auto_vpn_config_manager.dart';
-import 'business_logic/services/security_manager.dart';
+import 'core/services/app_initializer.dart';
 
 // Presentation imports
 import 'presentation/screens/splash_screen.dart';
@@ -35,34 +23,34 @@ Future<void> main() async {
   );
 }
 
-/// Initialize all production systems and run app
+/// Initialize minimal systems and launch UI immediately.
+/// Heavy VPN/security initialization runs in the background while
+/// the splash screen is already visible to the user.
 Future<void> _initializeAndRunApp() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    // Initialize production logging first
+    // ── Lightweight setup only (< 500ms) ──
     final logger = ProductionLogger();
     await logger.initialize(
-      minLevel: AppConstants.debugMode ? Level.debug : Level.info,
+      minLevel: Level.info,
       enableFileLogging: true,
       enablePerformanceLogging: true,
       enableSecurityLogging: true,
     );
     
-    logger.i('=== Privacy VPN Controller - Production Startup ===');
+    logger.i('=== Privacy VPN Controller - Fast Startup ===');
     logger.i('App Version: 1.0.0+1');
     logger.i('Environment: ${AppConstants.debugMode ? 'Development' : 'Production'}');
     
-    // Initialize error handling system
+    // Initialize error handling (lightweight)
     final errorHandler = ProductionErrorHandler();
     await errorHandler.initialize(
-      enableCrashReporting: !AppConstants.debugMode, // Only in production
+      enableCrashReporting: !AppConstants.debugMode,
       enableErrorLogging: true,
     );
     
-    logger.i('Error handling system initialized');
-    
-    // Set device orientation preferences
+    // Set device orientations
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -70,20 +58,12 @@ Future<void> _initializeAndRunApp() async {
       DeviceOrientation.landscapeRight,
     ]);
     
-    logger.i('Device orientations configured');
+    logger.i('Minimal setup done – launching UI immediately');
     
-    // Initialize core systems with comprehensive error handling
-    await _initializeCoreSystemsWithErrorHandling(logger);
+    // ── Kick off heavy init in background (runs while splash is visible) ──
+    AppInitializer().startBackgroundInit();
     
-    // Initialize VPN and security systems
-    await _initializeVpnSystemsWithErrorHandling(logger);
-    
-    // Initialize optimized method channels
-    await _initializeMethodChannelsWithErrorHandling(logger);
-    
-    logger.i('All systems initialized successfully - launching app');
-    
-    // Launch the application
+    // ── Show UI NOW – splash screen will wait for background init ──
     runApp(
       ProviderScope(
         child: PrivacyVpnControllerApp(),
@@ -101,149 +81,6 @@ Future<void> _initializeAndRunApp() async {
         home: _buildErrorScreen(e.toString()),
       ),
     );
-  }
-}
-
-/// Initialize core systems with error handling
-Future<void> _initializeCoreSystemsWithErrorHandling(ProductionLogger logger) async {
-  // Initialize secure storage with timeout and retry
-  try {
-    final secureStorage = SecureStorage();
-    await secureStorage.initialize().timeout(
-      Duration(seconds: 15),
-      onTimeout: () {
-        logger.w('Secure storage initialization timed out - using fallback');
-        throw TimeoutException('Secure storage timeout', Duration(seconds: 15));
-      },
-    );
-    logger.i('✓ Secure storage initialized');
-  } catch (e) {
-    logger.e('✗ Secure storage initialization failed', error: e);
-    // Continue with app - storage will use fallback methods
-  }
-}
-
-/// Initialize VPN systems with comprehensive error handling
-Future<void> _initializeVpnSystemsWithErrorHandling(ProductionLogger logger) async {
-  final initResults = <String, bool>{};
-  
-  // Initialize Enhanced VPN Manager
-  try {
-    final enhancedVpnManager = EnhancedVpnManager();
-    final success = await enhancedVpnManager.initialize().timeout(Duration(seconds: 20));
-    initResults['enhanced_vpn'] = success;
-    if (success) {
-      logger.i('✓ Enhanced VPN Manager initialized');
-    } else {
-      logger.w('✗ Enhanced VPN Manager initialization failed');
-    }
-  } catch (e) {
-    logger.e('✗ Enhanced VPN Manager initialization error', error: e);
-    initResults['enhanced_vpn'] = false;
-  }
-  
-  // Initialize WireGuard Manager
-  try {
-    final wireGuardManager = WireGuardManager();
-    final success = await wireGuardManager.initialize().timeout(Duration(seconds: 15));
-    initResults['wireguard'] = success;
-    if (success) {
-      logger.i('✓ WireGuard Manager initialized');
-    } else {
-      logger.w('✗ WireGuard Manager initialization failed');
-    }
-  } catch (e) {
-    logger.e('✗ WireGuard Manager initialization error', error: e);
-    initResults['wireguard'] = false;
-  }
-  
-  // Initialize Legacy VPN Manager (fallback)
-  try {
-    final vpnManager = VpnManager();
-    await vpnManager.initialize().timeout(Duration(seconds: 15));
-    initResults['legacy_vpn'] = true;
-    logger.i('✓ Legacy VPN Manager initialized (fallback)');
-  } catch (e) {
-    logger.e('✗ Legacy VPN Manager initialization failed', error: e);
-    initResults['legacy_vpn'] = false;
-  }
-  
-  // Initialize Security Manager
-  try {
-    final securityManager = SecurityManager();
-    final success = await securityManager.initialize().timeout(Duration(seconds: 20));
-    initResults['security'] = success;
-    if (success) {
-      logger.i('✓ Security Manager initialized');
-      
-      // Enable critical security features
-      try {
-        await securityManager.enableKillSwitch();
-        await securityManager.enableDnsLeakProtection();
-        await securityManager.enableIpv6Protection();
-        logger.i('✓ Core security features enabled');
-      } catch (e) {
-        logger.w('Some security features failed to enable', error: e);
-      }
-    } else {
-      logger.w('✗ Security Manager initialization failed');
-    }
-  } catch (e) {
-    logger.e('✗ Security Manager initialization error', error: e);
-    initResults['security'] = false;
-  }
-  
-  // Initialize Proxy Manager
-  try {
-    final proxyManager = ProxyManager();
-    await proxyManager.initialize().timeout(Duration(seconds: 15));
-    initResults['proxy'] = true;
-    logger.i('✓ Proxy Manager initialized');
-  } catch (e) {
-    logger.e('✗ Proxy Manager initialization failed', error: e);
-    initResults['proxy'] = false;
-  }
-  
-  // Initialize Auto VPN Configuration Manager
-  try {
-    final autoVpnManager = AutoVpnConfigManager();
-    await autoVpnManager.initialize().timeout(Duration(seconds: 25));
-    initResults['auto_vpn'] = true;
-    logger.i('✓ Auto VPN Configuration Manager initialized');
-  } catch (e) {
-    logger.e('✗ Auto VPN Configuration Manager initialization failed', error: e);
-    initResults['auto_vpn'] = false;
-  }
-  
-  // Log initialization summary
-  final successCount = initResults.values.where((success) => success).length;
-  final totalCount = initResults.length;
-  
-  logger.i('VPN Systems Initialization Summary: $successCount/$totalCount successful');
-  logger.i('Initialization Results: $initResults');
-  
-  if (successCount == 0) {
-    throw Exception('Critical: All VPN systems failed to initialize');
-  } else if (successCount < totalCount) {
-    logger.w('Warning: Some VPN systems failed - app may have limited functionality');
-  }
-}
-
-/// Initialize optimized method channels with error handling
-Future<void> _initializeMethodChannelsWithErrorHandling(ProductionLogger logger) async {
-  try {
-    // Initialize all optimized method channels
-    await AppMethodChannels.initializeAll().timeout(Duration(seconds: 10));
-    logger.i('✓ Optimized method channels initialized');
-    
-    // Log channel statistics
-    final stats = AppMethodChannels.getAllStatistics();
-    logger.performance('method_channels_init', Duration(milliseconds: 100), 
-      metrics: {'channels_count': stats.length});
-    
-  } catch (e) {
-    logger.e('✗ Method channels initialization failed', error: e);
-    // App can still function with basic method channels
   }
 }
 
@@ -318,10 +155,10 @@ class PrivacyVpnControllerApp extends ConsumerWidget {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       
-      // Theme configuration with system theme detection
-      theme: AppTheme.lightTheme,
+      // Theme configuration with dark theme (privacy-focused design)
+      theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark, // Always use dark theme for privacy focus
       
       // Internationalization setup
       locale: Locale('en', 'US'),

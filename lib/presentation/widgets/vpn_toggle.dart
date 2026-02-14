@@ -1,1 +1,0 @@
-// VPN toggle widget will be created here

@@ -7,6 +7,7 @@ import '../../data/models/proxy_config.dart';
 import '../../data/repositories/built_in_servers_repository.dart';
 import '../managers/vpn_manager.dart';
 import '../managers/proxy_manager.dart';
+import '../managers/auto_vpn_config_manager.dart';
 
 class AnonymousChainService {
   static final AnonymousChainService _instance = AnonymousChainService._internal();
@@ -16,6 +17,9 @@ class AnonymousChainService {
   final _serversRepo = BuiltInServersRepository();
   final _random = Random.secure();
   final _logger = Logger();
+  final _vpnManager = VpnManager();       // Singleton - already initialized in main.dart
+  final _proxyManager = ProxyManager();   // Singleton - already initialized in main.dart
+  final _autoVpnManager = AutoVpnConfigManager(); // Singleton for VPN fallback
   Timer? _rotationTimer;
   Timer? _heartbeatTimer;
   
@@ -41,15 +45,18 @@ class AnonymousChainService {
       // Update chain status
       _currentChain = chain.copyWith(status: ChainStatus.connecting);
       
-      // Establish proxy connections in sequence
+      bool proxyChainSuccess = true;
+      
+      // Try establishing proxy connections in sequence
       for (int i = 0; i < chain.proxyChain.length; i++) {
         final proxy = chain.proxyChain[i];
         _logger.i('Connecting hop ${i + 1}: ${proxy.name}');
         
         final success = await _connectToProxy(proxy);
         if (!success) {
-          _logger.e('Failed to connect to ${proxy.name}');
-          return false;
+          _logger.w('Proxy hop ${i + 1} failed: ${proxy.name}');
+          proxyChainSuccess = false;
+          break;
         }
         
         // Add random delay between connections for stealth
@@ -64,18 +71,20 @@ class AnonymousChainService {
       if (chain.vpnExit != null) {
         _logger.i('Connecting VPN exit: ${chain.vpnExit!.name}');
         
-        // Use VPN manager instead of connection provider
-        final vpnManager = VpnManager();
-        await vpnManager.initialize();
-        
         // Create VpnConfig from BuiltInServer
         final vpnConfig = chain.vpnExit!.toVpnConfig();
         
-        final vpnSuccess = await vpnManager.connect(vpnConfig);
+        final vpnSuccess = await _vpnManager.connect(vpnConfig);
         if (!vpnSuccess) {
           _logger.e('Failed to connect VPN exit: ${chain.vpnExit!.name}');
-          return false;
+          // Fall back to auto VPN if specified exit failed
+          return await _fallbackToDirectVpn(chain);
         }
+      } else if (!proxyChainSuccess) {
+        // No VPN exit specified and proxy chain failed →
+        // Fall back to direct WireGuard VPN connection
+        _logger.i('Proxy chain unavailable, falling back to direct VPN...');
+        return await _fallbackToDirectVpn(chain);
       }
       
       // Mark chain as connected
@@ -97,10 +106,40 @@ class AnonymousChainService {
       
     } catch (e) {
       _logger.e('Chain connection failed: $e');
-      _currentChain = chain.copyWith(status: ChainStatus.error);
-      return false;
+      // Last resort: try direct VPN
+      try {
+        return await _fallbackToDirectVpn(chain);
+      } catch (_) {
+        _currentChain = chain.copyWith(status: ChainStatus.error);
+        return false;
+      }
     } finally {
       _isConnecting = false; // Always release the lock
+    }
+  }
+  
+  /// Fallback to direct WireGuard VPN connection when proxy chain is unavailable
+  Future<bool> _fallbackToDirectVpn(AnonymousChain chain) async {
+    _logger.i('Attempting direct VPN connection (fallback)...');
+    try {
+      final connected = await _autoVpnManager.oneClickConnect();
+      if (connected) {
+        _currentChain = chain.copyWith(
+          status: ChainStatus.connected,
+          connectedAt: DateTime.now(),
+        );
+        _startHeartbeat();
+        _logger.i('Direct VPN fallback connected successfully');
+        return true;
+      } else {
+        _logger.e('Direct VPN fallback also failed');
+        _currentChain = chain.copyWith(status: ChainStatus.error);
+        return false;
+      }
+    } catch (e) {
+      _logger.e('Direct VPN fallback error: $e');
+      _currentChain = chain.copyWith(status: ChainStatus.error);
+      return false;
     }
   }
   
@@ -214,13 +253,18 @@ class AnonymousChainService {
     _rotationTimer?.cancel();
     _heartbeatTimer?.cancel();
     
-    // Disconnect VPN using VPN manager
-    final vpnManager = VpnManager();
-    await vpnManager.disconnect();
+    // Disconnect VPN using singleton VPN manager
+    await _vpnManager.disconnect();
     
-    // Disconnect proxy chain using ProxyManager
-    final proxyManager = ProxyManager();
-    await proxyManager.stopAllProxies();
+    // Also disconnect via AutoVpnConfigManager (in case fallback was used)
+    try {
+      await _autoVpnManager.disconnect();
+    } catch (_) {}
+    
+    // Disconnect proxy chain using singleton ProxyManager (if native available)
+    if (_proxyManager.isNativeProxyAvailable) {
+      await _proxyManager.stopAllProxies();
+    }
     
     _currentChain = _currentChain?.copyWith(status: ChainStatus.inactive);
     
@@ -229,11 +273,8 @@ class AnonymousChainService {
   
   // Private helper methods
   Future<bool> _connectToProxy(ProxyConfig proxy) async {
-    // Use real ProxyManager instead of simulation
-    final proxyManager = ProxyManager();
-    await proxyManager.initialize();
-    
-    final success = await proxyManager.startProxy(proxy);
+    // Use singleton ProxyManager (already initialized in main.dart)
+    final success = await _proxyManager.startProxy(proxy);
     
     _logger.i('Connected to ${proxy.name} (${proxy.type.name}): $success');
     return success;

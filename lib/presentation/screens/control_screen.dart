@@ -10,9 +10,8 @@ import 'package:privacy_vpn_controller/presentation/widgets/connection_button.da
 import 'package:privacy_vpn_controller/presentation/screens/mode_info_screen.dart';
 import 'package:privacy_vpn_controller/presentation/screens/status_screen.dart';
 import 'package:privacy_vpn_controller/presentation/screens/config_screen.dart';
-import 'package:privacy_vpn_controller/data/models/proxy_config.dart';
 import 'package:privacy_vpn_controller/data/models/connection_status.dart';
-// New built-in servers imports
+// Built-in servers imports
 import '../../business_logic/managers/auto_vpn_config_manager.dart';
 import '../../business_logic/providers/built_in_server_providers.dart';
 import 'vpn_main_screen_example.dart';
@@ -34,6 +33,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   // Auto VPN Configuration Manager
   final AutoVpnConfigManager _autoManager = AutoVpnConfigManager();
   bool _isAutoManagerInitialized = false;
+  
+  // Real connection tracking
+  DateTime? _connectedSince;
+  final Stopwatch _connectionTimer = Stopwatch();
 
   @override
   void initState() {
@@ -80,7 +83,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   @override
   Widget build(BuildContext context) {
     final activeChain = ref.watch(activeAnonymousChainProvider);
+    final serverState = ref.watch(serverConnectionStateProvider);
     final theme = Theme.of(context);
+    
+    // Unified connection state: connected if EITHER system is connected
+    final isEffectivelyConnected = activeChain?.status == ChainStatus.connected 
+        || serverState == ServerConnectionState.connected;
     
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -174,7 +182,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   _buildConnectSection(activeChain),
                   SizedBox(height: 48),
                   _buildQuickActions(),
-                  if (activeChain?.status == ChainStatus.connected) ...[
+                  if (isEffectivelyConnected) ...[
                     SizedBox(height: 24),
                     _buildConnectionInfo(activeChain),
                   ],
@@ -204,8 +212,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   Widget _buildStatusCard(AnonymousChain? activeChain) {
     final theme = Theme.of(context);
     final customColors = theme.colorScheme.customColors;
-    final isConnected = activeChain?.status == ChainStatus.connected;
-    final isConnecting = activeChain?.status == ChainStatus.connecting;
+    final serverState = ref.watch(serverConnectionStateProvider);
+    
+    // Unified state: connected if EITHER system is connected
+    final isConnected = activeChain?.status == ChainStatus.connected 
+        || serverState == ServerConnectionState.connected;
+    final isConnecting = (activeChain?.status == ChainStatus.connecting 
+        || serverState == ServerConnectionState.connecting) && !isConnected;
     
     // Watch both VPN and proxy status for comprehensive display
     final vpnStatusAsync = ref.watch(vpnStatusProvider);
@@ -357,10 +370,17 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   }
 
   Widget _buildConnectSection(AnonymousChain? activeChain) {
-    final isConnected = activeChain?.status == ChainStatus.connected;
-    final isConnecting = activeChain?.status == ChainStatus.connecting;
-    final isDisconnecting = activeChain?.status == ChainStatus.disconnecting;
-    final hasError = activeChain?.status == ChainStatus.error;
+    final serverState = ref.watch(serverConnectionStateProvider);
+    
+    // Unified: connected if EITHER system reports connected
+    final isConnected = activeChain?.status == ChainStatus.connected
+        || serverState == ServerConnectionState.connected;
+    final isConnecting = (activeChain?.status == ChainStatus.connecting
+        || serverState == ServerConnectionState.connecting) && !isConnected;
+    final isDisconnecting = activeChain?.status == ChainStatus.disconnecting
+        || serverState == ServerConnectionState.disconnecting;
+    final hasError = activeChain?.status == ChainStatus.error
+        || serverState == ServerConnectionState.error;
     
     return Column(
       children: [
@@ -374,7 +394,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                 child: ConnectionButton(
                   isConnected: isConnected,
                   isConnecting: isConnecting || isDisconnecting,
-                  onTap: () => _handleConnectionToggle(),
+                  onTap: () => _handleUnifiedToggle(),
                 ),
               );
             },
@@ -383,14 +403,14 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         SizedBox(height: 16),
         Text(
           isConnected 
-            ? 'Anonymous Mode: ${activeChain?.mode.name.toUpperCase()}'
+            ? 'VPN Connected${activeChain?.mode != null ? ' (${activeChain!.mode.name.toUpperCase()})' : ''}'
             : isConnecting
-            ? 'Establishing Anonymous Connection...'
+            ? 'Establishing Secure Connection...'
             : isDisconnecting
             ? 'Disconnecting...'
             : hasError
             ? 'Connection Error - Tap to Retry'
-            : 'Tap to Connect Anonymously',
+            : 'Tap to Connect',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: hasError ? Colors.red : Colors.white,
@@ -398,10 +418,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
             fontWeight: FontWeight.w600,
           ),
         ),
-        if (hasError && activeChain != null) ...[
+        if (hasError) ...[
           SizedBox(height: 8),
           Text(
-            'Failed to establish ${activeChain.mode.name} connection',
+            'Connection failed. Tap to retry.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.red.shade300,
@@ -467,24 +487,35 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
           width: double.infinity,
           height: 60,
           child: ElevatedButton.icon(
-            onPressed: connectionState == ServerConnectionState.connecting ? null : () {
+            onPressed: connectionState == ServerConnectionState.connecting 
+                || connectionState == ServerConnectionState.disconnecting
+                ? null : () {
               _handleAutoConnect();
             },
             icon: connectionState == ServerConnectionState.connecting 
                 ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Icon(Icons.auto_awesome, size: 24),
+                : connectionState == ServerConnectionState.disconnecting
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : connectionState == ServerConnectionState.connected
+                        ? Icon(Icons.power_settings_new, size: 24)
+                        : Icon(Icons.auto_awesome, size: 24),
             label: Text(
               connectionState == ServerConnectionState.connected 
-                  ? 'Connected to ${activeConfig?.name ?? "Server"}'
+                  ? 'Disconnect from ${activeConfig?.name ?? "Server"}'
                   : connectionState == ServerConnectionState.connecting 
                       ? 'Connecting...'
-                      : 'Auto Connect to Best Server',
+                      : connectionState == ServerConnectionState.disconnecting
+                          ? 'Disconnecting...'
+                          : 'Auto Connect to Best Server',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: connectionState == ServerConnectionState.connected
                   ? Colors.green
-                  : Theme.of(context).colorScheme.primary,
+                  : connectionState == ServerConnectionState.error
+                      ? Colors.red.shade700
+                      : Theme.of(context).colorScheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
@@ -610,6 +641,16 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   Widget _buildConnectionInfo(AnonymousChain? activeChain) {
     final theme = Theme.of(context);
     final customColors = theme.colorScheme.customColors;
+    final activeConfig = ref.watch(activeVpnConfigProvider);
+    
+    // Real connection duration
+    final duration = _connectedSince != null 
+        ? DateTime.now().difference(_connectedSince!) 
+        : Duration.zero;
+    final timeStr = '${duration.inMinutes.toString().padLeft(2, '0')}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
+    
+    // Real server name
+    final serverName = activeConfig?.name ?? 'Cloudflare WARP';
     
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -632,7 +673,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   Icon(Icons.monitor_heart_outlined, color: theme.colorScheme.primary, size: 20),
                   SizedBox(width: 10),
                   Text(
-                    'Connection Analytics',
+                    'Connection Info',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -640,17 +681,17 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                 ],
               ),
               SizedBox(height: 16),
-              _buildConnectionDetail('Mode', activeChain?.mode.toString().split('.').last.toUpperCase() ?? 'Unknown'),
-              _buildConnectionDetail('Routing', '${activeChain?.proxyChain.length ?? 0} Relay Hops'),
-              _buildConnectionDetail('Protocol', 'WireGuard + ChaCha20'),
-              _buildConnectionDetail('Encryption', '256-bit AES'),
+              _buildConnectionDetail('Server', serverName),
+              _buildConnectionDetail('Protocol', 'WireGuard'),
+              _buildConnectionDetail('Encryption', 'ChaCha20-Poly1305'),
+              _buildConnectionDetail('DNS', '1.1.1.1 (Cloudflare)'),
               SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildStatCard('Latency', '42ms', Icons.speed),
-                  _buildStatCard('Data', '1.2GB', Icons.download),
-                  _buildStatCard('Time', '12:45', Icons.timer),
+                  _buildStatCard('Uptime', timeStr, Icons.timer),
+                  _buildStatCard('Port', '${activeConfig?.port ?? 2408}', Icons.router),
+                  _buildStatCard('Status', 'Active', Icons.check_circle),
                 ],
               ),
             ],
@@ -726,166 +767,74 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     });
   }
 
-  void _handleConnectionToggle() async {
+  /// Unified toggle: disconnects from whichever system is active,
+  /// or connects via auto-connect (direct WireGuard VPN).
+  void _handleUnifiedToggle() async {
     final activeChain = ref.read(activeAnonymousChainProvider);
-    final chainService = ref.read(anonymousChainServiceProvider);
+    final serverState = ref.read(serverConnectionStateProvider);
     
-    if (activeChain?.status == ChainStatus.connected) {
-      try {
-        // Update UI to show disconnecting
-        ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.disconnecting);
-        
-        // Disconnect through the service
-        await chainService.disconnect(ref);
-        
-        // Clear the active chain
-        ref.read(activeAnonymousChainProvider.notifier).clearChain();
-        
-        _logger.d('Disconnected from VPN');
-      } catch (e) {
-        _logger.e('Failed to disconnect: $e');
-        // Revert status on error
-        ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.connected);
-      }
+    final isConnected = activeChain?.status == ChainStatus.connected 
+        || serverState == ServerConnectionState.connected;
+    
+    if (isConnected) {
+      // --- DISCONNECT from whichever is active ---
+      await _handleUnifiedDisconnect();
     } else {
-      try {
-        // Use predefined chain if available, otherwise create custom
-        final predefinedChains = ref.read(predefinedChainsProvider);
-        AnonymousChain chain;
-        
-        if (predefinedChains.containsKey(_selectedMode)) {
-          chain = predefinedChains[_selectedMode]!;
-        } else {
-          final proxyChain = _getProxyChainForMode(_selectedMode);
-          chain = AnonymousChain(
-            id: 'chain_${DateTime.now().millisecondsSinceEpoch}',
-            name: '${_selectedMode.toString().split('.').last} Chain',
-            mode: _selectedMode,
-            proxyChain: proxyChain,
-          );
-        }
-        
-        // Set connecting status in UI
-        ref.read(activeAnonymousChainProvider.notifier).setChain(
-          chain.copyWith(status: ChainStatus.connecting)
-        );
-        
-        // Actually connect through the service
-        final success = await chainService.connectToChain(chain, ref);
-        
-        if (success) {
-          _logger.i('Connected to VPN with $_selectedMode mode');
-          // Update provider with connected chain
-          ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.connected);
-        } else {
-          _logger.w('Failed to establish connection');
-          // Update status to error
-          ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.error);
-        }
-      } catch (e) {
-        _logger.e('Failed to connect: $e');
-        ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.error);
-      }
+      // --- CONNECT via auto-connect (fastest path) ---
+      await _handleAutoConnect();
     }
   }
 
-  List<ProxyConfig> _getProxyChainForMode(AnonymousMode mode) {
-    switch (mode) {
-      case AnonymousMode.turbo:
-        return [
-          ProxyConfig(
-            id: 'turbo_proxy',
-            name: 'Turbo Proxy',
-            type: ProxyType.shadowsocks,
-            role: ProxyRole.entry,
-            host: 'turbo.proxy.net',
-            port: 8388,
-            method: 'chacha20-ietf-poly1305',
-            password: 'turbo_key',
-            country: 'Singapore',
-            countryCode: 'SG',
-            flagEmoji: '🇸🇬',
-            createdAt: DateTime.now(),
-          ),
-        ];
-      case AnonymousMode.stealth:
-        return [
-          ProxyConfig(
-            id: 'stealth_entry',
-            name: 'Stealth Entry',
-            type: ProxyType.shadowsocks,
-            role: ProxyRole.entry,
-            host: 'entry.stealth.net',
-            port: 8388,
-            method: 'chacha20-ietf-poly1305',
-            password: 'stealth_entry',
-            country: 'Netherlands',
-            countryCode: 'NL',
-            flagEmoji: '🇳🇱',
-            createdAt: DateTime.now(),
-          ),
-          ProxyConfig(
-            id: 'stealth_exit',
-            name: 'Stealth Exit',
-            type: ProxyType.shadowsocks,
-            role: ProxyRole.exit,
-            host: 'exit.stealth.net',
-            port: 8389,
-            method: 'chacha20-ietf-poly1305',
-            password: 'stealth_exit',
-            country: 'Switzerland',
-            countryCode: 'CH',
-            flagEmoji: '🇨🇭',
-            createdAt: DateTime.now(),
-          ),
-        ];
-      case AnonymousMode.ghost:
-        return [
-          ProxyConfig(
-            id: 'ghost_entry',
-            name: 'Ghost Entry',
-            type: ProxyType.shadowsocks,
-            role: ProxyRole.entry,
-            host: 'entry1.ghost.net',
-            port: 8388,
-            method: 'chacha20-ietf-poly1305',
-            password: 'ghost_entry',
-            country: 'India',
-            countryCode: 'IN',
-            flagEmoji: '🇮🇳',
-            createdAt: DateTime.now(),
-          ),
-          ProxyConfig(
-            id: 'ghost_middle',
-            name: 'Ghost Middle',
-            type: ProxyType.shadowsocks,
-            role: ProxyRole.middle,
-            host: 'middle.ghost.net',
-            port: 8389,
-            method: 'chacha20-ietf-poly1305',
-            password: 'ghost_middle',
-            country: 'Romania',
-            countryCode: 'RO',
-            flagEmoji: '🇷🇴',
-            createdAt: DateTime.now(),
-          ),
-          ProxyConfig(
-            id: 'ghost_exit',
-            name: 'Ghost Exit',
-            type: ProxyType.shadowsocks,
-            role: ProxyRole.exit,
-            host: 'exit.ghost.net',
-            port: 8390,
-            method: 'chacha20-ietf-poly1305',
-            password: 'ghost_exit',
-            country: 'Iceland',
-            countryCode: 'IS',
-            flagEmoji: '🇮🇸',
-            createdAt: DateTime.now(),
-          ),
-        ];
-      default:
-        return [];
+  /// Disconnect from both state systems to ensure clean state
+  Future<void> _handleUnifiedDisconnect() async {
+    try {
+      final activeChain = ref.read(activeAnonymousChainProvider);
+      final serverState = ref.read(serverConnectionStateProvider);
+      
+      // Update both UIs to disconnecting
+      if (activeChain != null) {
+        ref.read(activeAnonymousChainProvider.notifier).updateChainStatus(ChainStatus.disconnecting);
+      }
+      if (serverState == ServerConnectionState.connected) {
+        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnecting;
+      }
+      
+      // Disconnect through auto manager (covers WireGuard tunnel)
+      await _autoManager.disconnect();
+      
+      // Also disconnect chain service if it was used  
+      if (activeChain != null) {
+        final chainService = ref.read(anonymousChainServiceProvider);
+        try { await chainService.disconnect(ref); } catch (_) {}
+      }
+      
+      // Clear BOTH state systems
+      ref.read(activeAnonymousChainProvider.notifier).clearChain();
+      ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+      ref.read(activeVpnConfigProvider.notifier).state = null;
+      
+      // Stop timer
+      _connectionTimer.stop();
+      _connectionTimer.reset();
+      _connectedSince = null;
+      
+      _logger.d('Disconnected from VPN (unified)');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('VPN Disconnected'), backgroundColor: Colors.grey),
+        );
+      }
+    } catch (e) {
+      _logger.e('Failed to disconnect: $e');
+      // Revert states on error
+      ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
+      
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) {
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+        }
+      });
     }
   }
 
@@ -914,12 +863,41 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     );
   }
 
-  // Auto VPN Action Handlers - NEW
+  // Auto VPN Action Handlers - Using real VPN connection
   Future<void> _handleAutoConnect() async {
     if (!_isAutoManagerInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Auto VPN manager not ready'), backgroundColor: Colors.orange),
+        SnackBar(content: Text('Auto VPN manager not ready. Please wait...'), backgroundColor: Colors.orange),
       );
+      return;
+    }
+
+    final currentState = ref.read(serverConnectionStateProvider);
+    
+    // If already connected, disconnect first
+    if (currentState == ServerConnectionState.connected) {
+      try {
+        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnecting;
+        final success = await _autoManager.disconnect();
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = null;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+          // Also clear anonymous chain state and timer
+          ref.read(activeAnonymousChainProvider.notifier).clearChain();
+          _connectionTimer.stop();
+          _connectionTimer.reset();
+          _connectedSince = null;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('VPN Disconnected'), backgroundColor: Colors.grey),
+            );
+          }
+        } else {
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
+        }
+      } catch (e) {
+        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
+      }
       return;
     }
 
@@ -931,24 +909,35 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       if (success && _autoManager.currentConfig != null) {
         ref.read(activeVpnConfigProvider.notifier).state = _autoManager.currentConfig;
         ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        
+        // Start connection timer
+        _connectedSince = DateTime.now();
+        _connectionTimer.reset();
+        _connectionTimer.start();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to ${_autoManager.currentConfig!.name}'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connected to ${_autoManager.currentConfig!.name}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       } else {
-        throw Exception('Auto connection failed');
+        throw Exception('Could not establish VPN connection. Please try a different server.');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Connection failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+            action: SnackBarAction(label: 'RETRY', textColor: Colors.white, onPressed: _handleAutoConnect),
+          ),
+        );
+      }
       
       // Clear error state after 3 seconds
       Future.delayed(Duration(seconds: 3), () {
@@ -966,26 +955,44 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       final warpConfig = await ref.read(warpConfigProvider.future);
 
       if (warpConfig != null) {
-        ref.read(activeVpnConfigProvider.notifier).state = warpConfig;
-        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        // Actually connect using the auto manager's connectWithConfig
+        final success = await _autoManager.connectWithConfig(warpConfig);
+        
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = warpConfig;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+          
+          // Start connection timer
+          _connectedSince = DateTime.now();
+          _connectionTimer.reset();
+          _connectionTimer.start();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to Cloudflare WARP'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Connected to Cloudflare WARP'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('WARP VPN tunnel could not be established');
+        }
       } else {
-        throw Exception('WARP configuration failed');
+        throw Exception('WARP configuration generation failed. Check your network.');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('WARP connection failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('WARP connection failed: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+            action: SnackBarAction(label: 'RETRY', textColor: Colors.white, onPressed: _handleWarpConnect),
+          ),
+        );
+      }
       
       Future.delayed(Duration(seconds: 3), () {
         if (mounted) {
@@ -1004,26 +1011,48 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       final config = await _autoManager.getStreamingOptimizedConfig();
 
       if (config != null) {
-        ref.read(activeVpnConfigProvider.notifier).state = config;
-        ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+        // Actually connect using the auto manager
+        final success = await _autoManager.connectWithConfig(config);
+        
+        if (success) {
+          ref.read(activeVpnConfigProvider.notifier).state = config;
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.connected;
+          
+          // Start connection timer
+          _connectedSince = DateTime.now();
+          _connectionTimer.reset();
+          _connectionTimer.start();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to streaming server'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Connected to streaming server: ${config.name}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('Streaming server VPN tunnel failed');
+        }
       } else {
-        throw Exception('No streaming servers available');
+        throw Exception('No streaming-optimized servers available');
       }
     } catch (e) {
       ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Streaming connection failed'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Streaming connection failed: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
+      Future.delayed(Duration(seconds: 3), () {
+        if (mounted) {
+          ref.read(serverConnectionStateProvider.notifier).state = ServerConnectionState.disconnected;
+        }
+      });
     }
   }
 
