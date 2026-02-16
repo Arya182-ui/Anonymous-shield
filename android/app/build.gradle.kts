@@ -45,9 +45,10 @@ android {
         manifestPlaceholders["allowBackup"] = "false"
         manifestPlaceholders["allowDebugging"] = "false"
         
-        // NDK configuration for WireGuard native libraries
+        // NDK configuration — arm64 for production, x86_64 added for emulator testing
+        // Binaries must exist in jniLibs/<abi>/ for each included ABI
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
         
         // Build configuration fields

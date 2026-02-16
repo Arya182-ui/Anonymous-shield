@@ -28,8 +28,6 @@ class WireGuardManager {
   bool _isConnected = false;
   
   DateTime? _connectionStartTime;
-  final int _bytesReceived = 0;  // TODO: Implement byte tracking
-  final int _bytesSent = 0;      // TODO: Implement byte tracking
   
   /// Initialize WireGuard manager
   Future<bool> initialize() async {

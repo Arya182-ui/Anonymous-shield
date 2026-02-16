@@ -51,10 +51,11 @@ class FreeVpnProvider {
     }
   }
   
-  /// Generate Cloudflare WARP config (moved from WarpConfigGenerator)
-  Future<VpnConfig?> generateWarpConfig() async {
+  /// Generate Cloudflare WARP config with optional endpoint override
+  /// Each call uses new keys + a random endpoint for IP diversity
+  Future<VpnConfig?> generateWarpConfig({String? overrideEndpoint}) async {
     try {
-      return await _warpGenerator.generateWarpConfig();
+      return await _warpGenerator.generateWarpConfig(overrideEndpoint: overrideEndpoint);
     } catch (e, stack) {
       _logger.e('Failed to generate WARP config', error: e, stackTrace: stack);
       return null;

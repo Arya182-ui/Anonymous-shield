@@ -22,6 +22,12 @@ BuiltInServer _$BuiltInServerFromJson(Map<String, dynamic> json) =>
       flagEmoji: json['flagEmoji'] as String,
       isRecommended: json['isRecommended'] as bool? ?? false,
       loadPercentage: (json['loadPercentage'] as num?)?.toInt() ?? 50,
+      publicKey: json['publicKey'] as String?,
+      clientPrivateKey: json['clientPrivateKey'] as String?,
+      clientAddress: json['clientAddress'] as String?,
+      presharedKey: json['presharedKey'] as String?,
+      dns: (json['dns'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      provider: json['provider'] as String?,
     );
 
 Map<String, dynamic> _$BuiltInServerToJson(BuiltInServer instance) =>
@@ -40,4 +46,10 @@ Map<String, dynamic> _$BuiltInServerToJson(BuiltInServer instance) =>
       'flagEmoji': instance.flagEmoji,
       'isRecommended': instance.isRecommended,
       'loadPercentage': instance.loadPercentage,
+      'publicKey': instance.publicKey,
+      'clientPrivateKey': instance.clientPrivateKey,
+      'clientAddress': instance.clientAddress,
+      'presharedKey': instance.presharedKey,
+      'dns': instance.dns,
+      'provider': instance.provider,
     };

@@ -116,17 +116,33 @@ class WireGuardVpnService {
       _currentConfig = config;
       _logger.i('VPN connection initiated for ${config.name}');
       
-      // Wait a bit and check the stage
-      await Future.delayed(const Duration(seconds: 2));
-      final stage = await _wireGuard!.stage();
-      
-      if (stage == VpnStage.connected || stage == VpnStage.connecting) {
-        _logger.i('VPN connected successfully');
-        return true;
-      } else {
-        _logger.w('VPN connection status: $stage');
-        return stage != VpnStage.disconnected;
+      // Wait for actual connected state with timeout
+      // Don't return true for intermediate states like 'connecting'
+      for (int i = 0; i < 10; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        final stage = await _wireGuard!.stage();
+        
+        if (stage == VpnStage.connected) {
+          _logger.i('VPN connected successfully');
+          return true;
+        } else if (stage == VpnStage.disconnected || stage == VpnStage.denied || stage == VpnStage.noConnection) {
+          _logger.e('VPN connection failed with stage: $stage');
+          _currentConfig = null;
+          return false;
+        }
+        // Still connecting/preparing - keep waiting
+        _logger.d('VPN stage: $stage, waiting... (${i + 1}/10)');
       }
+      
+      // Timeout - check final state
+      final finalStage = await _wireGuard!.stage();
+      if (finalStage == VpnStage.connected) {
+        _logger.i('VPN connected successfully (late)');
+        return true;
+      }
+      _logger.e('VPN connection timed out. Final stage: $finalStage');
+      _currentConfig = null;
+      return false;
       
     } catch (e) {
       _logger.e('Failed to connect VPN: $e');

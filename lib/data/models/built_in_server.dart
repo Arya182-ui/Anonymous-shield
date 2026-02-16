@@ -20,6 +20,25 @@ class BuiltInServer {
   final String flagEmoji;
   final bool isRecommended;
   final int loadPercentage;
+
+  // ------ Real VPS WireGuard fields (null for WARP-only servers) ------
+  /// Server's WireGuard public key (set for real VPS servers)
+  final String? publicKey;
+
+  /// Pre-generated client private key for this server
+  final String? clientPrivateKey;
+
+  /// Client tunnel address (e.g. "10.0.0.2/32")
+  final String? clientAddress;
+
+  /// Optional preshared key for extra security
+  final String? presharedKey;
+
+  /// Custom DNS servers for this VPS (defaults to 1.1.1.1 if null)
+  final List<String>? dns;
+
+  /// Provider tag — "oracle", "hetzner", "vultr", "warp", etc.
+  final String? provider;
   
   const BuiltInServer({
     required this.id,
@@ -36,6 +55,13 @@ class BuiltInServer {
     required this.flagEmoji,
     this.isRecommended = false,
     this.loadPercentage = 50,
+    // VPS fields
+    this.publicKey,
+    this.clientPrivateKey,
+    this.clientAddress,
+    this.presharedKey,
+    this.dns,
+    this.provider,
   });
 
   factory BuiltInServer.fromJson(Map<String, dynamic> json) => _$BuiltInServerFromJson(json);
@@ -44,48 +70,67 @@ class BuiltInServer {
   // Compatibility getter for method channels
   String get host => serverAddress;
 
+  /// True if this server has full WireGuard keys and can connect directly
+  /// without needing WARP API registration.
+  bool get isRealVps =>
+      publicKey != null &&
+      publicKey!.isNotEmpty &&
+      clientPrivateKey != null &&
+      clientPrivateKey!.isNotEmpty &&
+      clientAddress != null &&
+      clientAddress!.isNotEmpty;
+
+  /// Check if this server needs WARP auto-generation for keys
+  bool get needsWarpGeneration => !isRealVps;
+
+  /// Creates a VpnConfig from this server.
+  /// If isRealVps → builds complete config directly (instant, no API call).
+  /// If WARP → returns a template needing WARP key generation.
   VpnConfig toVpnConfig() {
-    // Note: Built-in servers should have real pre-configured keys
-    // In production, these would be actual WireGuard key pairs for your servers
-    final privateKey = _getConfiguredPrivateKey();
-    final publicKey = _getConfiguredPublicKey();
-    
-    // Validate that we have real keys before creating config
-    if (privateKey.startsWith('REPLACE_WITH') || publicKey.startsWith('REPLACE_WITH')) {
-      throw StateError(
-        'Server "$name" has placeholder WireGuard keys. '
-        'Configure real keys in built_in_servers.json or use auto-generated WARP configs.'
+    if (isRealVps) {
+      // Real VPS — complete config, ready to connect
+      return VpnConfig(
+        id: id,
+        name: name,
+        serverAddress: serverAddress,
+        port: port,
+        privateKey: clientPrivateKey!,
+        publicKey: publicKey!,
+        presharedKey: presharedKey,
+        allowedIPs: const ['0.0.0.0/0', '::/0'],
+        dnsServers: dns ?? const ['1.1.1.1', '1.0.0.1'],
+        endpoint: '$serverAddress:$port',
+        clientIpv4: clientAddress,
+        createdAt: DateTime.now(),
+        killSwitchEnabled: true,
+        metadata: {
+          'server_id': id,
+          'country': country,
+          'city': city,
+          'provider': provider ?? 'vps',
+          'is_real_vps': true,
+        },
       );
     }
-    
+
+    // WARP template — keys will be filled by WarpConfigGenerator
     return VpnConfig(
       id: id,
       name: name,
       serverAddress: serverAddress,
       port: port,
-      privateKey: privateKey,
-      publicKey: publicKey,
-      allowedIPs: ['0.0.0.0/0'],
-      dnsServers: ['1.1.1.1', '1.0.0.1'],
+      privateKey: 'PENDING_WARP_GENERATION',
+      publicKey: 'PENDING_WARP_GENERATION',
+      allowedIPs: const ['0.0.0.0/0', '::/0'],
+      dnsServers: const ['1.1.1.1', '1.0.0.1'],
       createdAt: DateTime.now(),
+      metadata: {
+        'server_id': id,
+        'country': country,
+        'city': city,
+        'requires_warp_generation': true,
+      },
     );
-  }
-  
-  String _getConfiguredPrivateKey() {
-    // PRODUCTION TODO: Replace with actual WireGuard private keys
-    // These should be loaded from a secure configuration file or environment
-    // Example: Load from encrypted assets or secure remote configuration
-    
-    // For now, return a warning placeholder
-    return 'REPLACE_WITH_REAL_PRIVATE_KEY_FOR_SERVER_$id';
-  }
-  
-  String _getConfiguredPublicKey() {
-    // PRODUCTION TODO: Replace with actual WireGuard public keys  
-    // These should correspond to the private keys above
-    
-    // For now, return a warning placeholder
-    return 'REPLACE_WITH_REAL_PUBLIC_KEY_FOR_SERVER_$id';
   }
   
   double distanceFrom(double userLat, double userLon) {
