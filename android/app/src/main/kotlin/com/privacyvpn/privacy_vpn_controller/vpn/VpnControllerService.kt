@@ -80,12 +80,23 @@ class VpnControllerService : VpnService() {
     
     override fun onDestroy() {
         super.onDestroy()
-        Timber.d("VpnControllerService destroyed")
+        Timber.d("VpnControllerService destroyed (isRunning=${isRunning.get()})")
         
-        disconnectVpn()
-        serviceScope.cancel()
-        isRunning.set(false)
-        currentConfig.set(null)
+        // Only clean up if not actively running (let START_STICKY restart if needed)
+        if (!isRunning.get()) {
+            disconnectVpn()
+            serviceScope.cancel()
+            currentConfig.set(null)
+        }
+    }
+    
+    /**
+     * Called when user swipes the app from recent tasks.
+     * Keep VPN running in the background.
+     */
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        Timber.d("VpnControllerService: App task removed, VPN continues running")
+        super.onTaskRemoved(rootIntent)
     }
     
     /**

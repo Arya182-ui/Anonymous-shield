@@ -55,31 +55,33 @@ class AutoVpnConfigManager {
       _isInitializing = false;
     }
   }
-  /// Get the best available VPN configuration automatically
-  /// यह function automatically best server select करके config return करता है
+  /// Get the best available VPN configuration automatically.
+  /// Priority: (1) Real VPS servers (instant), (2) WARP fallback.
   Future<VpnConfig?> getBestAvailableConfig() async {
     await _ensureInitialized();
 
     try {
       _logger.i('Finding best available VPN configuration...');
 
-      // 1. Try auto-selection based on location and performance
+      // 1. Auto-selection (real VPS round-robin, or WARP fallback)
       final autoSelected = await _serverService.autoSelectBestServer();
       if (autoSelected != null) {
         _currentConfig = autoSelected;
-        _logger.i('Auto-selected server: ${autoSelected.name}');
+        final isRealVps = autoSelected.metadata?['is_real_vps'] == true;
+        _logger.i('Selected: ${autoSelected.name} '
+            '(${isRealVps ? "real VPS" : "WARP"})');
         return autoSelected;
       }
 
-      // 2. Try Cloudflare WARP (best free option)
+      // 2. Last resort: raw WARP config
       final warpConfig = await _freeProvider.generateWarpConfig();
       if (warpConfig != null) {
         _currentConfig = warpConfig;
-        _logger.i('Generated Cloudflare WARP configuration');
+        _logger.i('Using raw Cloudflare WARP config');
         return warpConfig;
       }
 
-      // 3. Use pre-generated configs
+      // 3. Use pre-generated configs if available
       if (_availableConfigs.isNotEmpty) {
         _currentConfig = _availableConfigs.first;
         _logger.i('Using pre-generated config: ${_currentConfig!.name}');
@@ -294,38 +296,60 @@ class AutoVpnConfigManager {
       return false;
     }
   }
-  /// Rotate to next available server
+  /// Rotate to next available server - disconnects and reconnects with new config.
+  /// For real VPS: round-robin ensures a DIFFERENT server/IP each time.
+  /// For WARP: reconnects with new random endpoint (IP may or may not change).
   Future<VpnConfig?> rotateToNextServer() async {
     await _ensureInitialized();
 
     try {
-      if (_availableConfigs.isEmpty) {
-        await getMultipleConfigs();
+      _logger.i('Rotating to next server...');
+      
+      // IMPORTANT: Disconnect FIRST so that config generation API calls
+      // go through direct network, not through VPN tunnel.
+      if (_isConnected) {
+        _logger.i('Disconnecting current VPN before rotation...');
+        await _wireGuardService.disconnect();
+        _isConnected = false;
+        await Future.delayed(const Duration(seconds: 1));
+      }
+      
+      // autoSelectBestServer uses round-robin for real VPS
+      // so calling it again automatically picks the NEXT server
+      final freshConfig = await _serverService.autoSelectBestServer();
+      
+      if (freshConfig != null) {
+        final initialized = await _wireGuardService.initialize();
+        if (!initialized) {
+          _logger.e('Failed to initialize WireGuard for rotation');
+          return null;
+        }
+        
+        final connected = await _wireGuardService.connect(freshConfig);
+        if (connected) {
+          _currentConfig = freshConfig;
+          _isConnected = true;
+          final isRealVps = freshConfig.metadata?['is_real_vps'] == true;
+          _logger.i('Rotated to: ${freshConfig.name} '
+              '(${isRealVps ? "real VPS — different IP" : "WARP"})');
+          return freshConfig;
+        } else {
+          _logger.e('Rotation connection failed');
+          return null;
+        }
       }
 
-      if (_availableConfigs.isEmpty) {
-        return await getBestAvailableConfig();
-      }
-
-      // Find current config index
-      int currentIndex = 0;
-      if (_currentConfig != null) {
-        currentIndex = _availableConfigs.indexWhere((c) => c.id == _currentConfig!.id);
-        if (currentIndex == -1) currentIndex = 0;
-      }
-
-      // Move to next config
-      final nextIndex = (currentIndex + 1) % _availableConfigs.length;
-      _currentConfig = _availableConfigs[nextIndex];
-
-      _logger.i('Rotated to next server: ${_currentConfig!.name}');
-      return _currentConfig;
+      _logger.w('No config available for rotation');
+      return null;
 
     } catch (e, stack) {
       _logger.e('Failed to rotate server', error: e, stackTrace: stack);
       return null;
     }
   }
+  
+  /// Check if real VPS servers are configured
+  bool get hasRealVpsServers => _serverService.hasRealVpsServers;
   /// Get server statistics and recommendations
   Map<String, dynamic> getServerStats() {
     final stats = _serverService.getServerStats();

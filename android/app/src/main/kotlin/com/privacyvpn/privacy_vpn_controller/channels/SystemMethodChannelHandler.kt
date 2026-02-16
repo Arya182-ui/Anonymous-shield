@@ -1,9 +1,13 @@
 package com.privacyvpn.privacy_vpn_controller.channels
 
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import timber.log.Timber
@@ -21,6 +25,8 @@ class SystemMethodChannelHandler(
             "getSystemInfo" -> getSystemInfo(call, result)
             "checkNetworkConnectivity" -> checkNetworkConnectivity(call, result)
             "getDeviceInfo" -> getDeviceInfo(call, result)
+            "isBatteryOptimizationExempted" -> isBatteryOptimizationExempted(result)
+            "requestBatteryOptimizationExemption" -> requestBatteryOptimizationExemption(result)
             else -> result.notImplemented()
         }
     }
@@ -77,6 +83,47 @@ class SystemMethodChannelHandler(
         }
     }
     
+    /**
+     * Check if the app is exempted from battery optimization.
+     * If not exempted, Android may kill background services (Ghost mode).
+     */
+    private fun isBatteryOptimizationExempted(result: MethodChannel.Result) {
+        try {
+            val pm = activity.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val packageName = activity.packageName
+            val isExempted = pm.isIgnoringBatteryOptimizations(packageName)
+            result.success(mapOf("exempted" to isExempted))
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to check battery optimization")
+            result.success(mapOf("exempted" to false))
+        }
+    }
+
+    /**
+     * Request the user to exempt this app from battery optimization.
+     * This opens the system dialog directly asking to allow background activity.
+     */
+    private fun requestBatteryOptimizationExemption(result: MethodChannel.Result) {
+        try {
+            val pm = activity.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val packageName = activity.packageName
+            
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                activity.startActivity(intent)
+                result.success(mapOf("requested" to true))
+            } else {
+                // Already exempted
+                result.success(mapOf("requested" to false, "alreadyExempted" to true))
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to request battery optimization exemption")
+            result.success(mapOf("requested" to false, "error" to e.message))
+        }
+    }
+
     fun cleanup() {
         // Cleanup resources if needed
     }

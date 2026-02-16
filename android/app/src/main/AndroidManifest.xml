@@ -98,6 +98,7 @@
             android:name=".vpn.VpnControllerService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.net.VpnService"/>
@@ -109,6 +110,18 @@
             android:name=".proxy.ProxyService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
+        
+        <!-- Tor VPN Service (Ghost Mode) -->
+        <service 
+            android:name=".tor.TorVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService"/>
+            </intent-filter>
+        </service>
         
         <!-- Kill Switch Service -->
         <service 

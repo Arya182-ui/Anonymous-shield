@@ -1,12 +1,8 @@
 import 'dart:async';
-import 'package:logger/logger.dart';
 import '../logging/production_logger.dart';
 import '../../data/storage/secure_storage.dart';
 import '../../platform/channels/optimized_method_channel.dart';
-import '../../business_logic/managers/vpn_manager.dart';
-import '../../business_logic/managers/enhanced_vpn_manager.dart';
 import '../../business_logic/managers/wireguard_manager.dart';
-import '../../business_logic/managers/proxy_manager.dart';
 import '../../business_logic/managers/auto_vpn_config_manager.dart';
 import '../../business_logic/services/security_manager.dart';
 
@@ -56,11 +52,8 @@ class AppInitializer {
 
       // ── Phase 2: Parallel batch – independent systems ──
       await Future.wait([
-        _initEnhancedVpn(),
         _initWireGuard(),
-        _initLegacyVpn(),
         _initSecurity(),
-        _initProxy(),
         _initMethodChannels(),
       ]);
 
@@ -80,16 +73,6 @@ class AppInitializer {
 
   // ─── Individual initializers ───────────────────────────
 
-  Future<void> _initEnhancedVpn() async {
-    try {
-      final m = EnhancedVpnManager();
-      await m.initialize().timeout(const Duration(seconds: 12));
-      _logger.i('✓ Enhanced VPN Manager');
-    } catch (e) {
-      _logger.e('✗ Enhanced VPN Manager', error: e);
-    }
-  }
-
   Future<void> _initWireGuard() async {
     try {
       final m = WireGuardManager();
@@ -97,16 +80,6 @@ class AppInitializer {
       _logger.i('✓ WireGuard Manager');
     } catch (e) {
       _logger.e('✗ WireGuard Manager', error: e);
-    }
-  }
-
-  Future<void> _initLegacyVpn() async {
-    try {
-      final m = VpnManager();
-      await m.initialize().timeout(const Duration(seconds: 10));
-      _logger.i('✓ Legacy VPN Manager');
-    } catch (e) {
-      _logger.e('✗ Legacy VPN Manager', error: e);
     }
   }
 
@@ -129,16 +102,6 @@ class AppInitializer {
       }
     } catch (e) {
       _logger.e('✗ Security Manager', error: e);
-    }
-  }
-
-  Future<void> _initProxy() async {
-    try {
-      final m = ProxyManager();
-      await m.initialize().timeout(const Duration(seconds: 10));
-      _logger.i('✓ Proxy Manager');
-    } catch (e) {
-      _logger.e('✗ Proxy Manager', error: e);
     }
   }
 

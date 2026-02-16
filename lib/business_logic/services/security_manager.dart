@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
-import 'package:network_info_plus/network_info_plus.dart';
-import 'package:internet_connection_checker/internet_connection_checker.dart';
 import '../../platform/channels/vpn_method_channel.dart';
 import '../../data/models/connection_status.dart';
 
@@ -30,8 +28,6 @@ class SecurityManager {
   SecurityManager._internal();
 
   final Logger _logger = Logger();
-  final NetworkInfo _networkInfo = NetworkInfo();
-  final InternetConnectionChecker _connectionChecker = InternetConnectionChecker();
   
   // Security state tracking
   bool _isKillSwitchEnabled = false;
@@ -39,11 +35,6 @@ class SecurityManager {
   bool _isIpv6BlockingEnabled = false;
   bool _isWebRtcBlockingEnabled = false;
   bool _isTrafficObfuscationEnabled = false;
-  
-  // Advanced security features
-  bool _isAntiCensorshipEnabled = false;
-  bool _isDeepPacketInspectionProtectionEnabled = false;
-  bool _isMalwareProtectionEnabled = true;
   
   // Monitoring and detection
   Timer? _leakTestTimer;
@@ -54,17 +45,13 @@ class SecurityManager {
   StreamController<SecurityAlert>? _alertController;
   Stream<SecurityAlert>? _alertStream;
   
-  // Network monitoring
-  String? _lastKnownIP;
-  List<String> _trustedDnsServers = [
-    '1.1.1.1', '1.0.0.1',  // Cloudflare (privacy-focused)
-    '9.9.9.9', '149.112.112.112',  // Quad9 (security-focused) 
-    '8.8.8.8', '8.8.4.4'  // Google (fallback)
-  ];
-  
-  // Leak detection results
-  List<LeakTestResult> _recentLeakTests = [];
-  DateTime? _lastSecurityScan;
+  // Public getters for security status
+  bool get isKillSwitchEnabled => _isKillSwitchEnabled;
+  bool get isDnsLeakProtectionEnabled => _isDnsLeakProtectionEnabled;
+  bool get isIpv6BlockingEnabled => _isIpv6BlockingEnabled;
+  bool get isWebRtcBlockingEnabled => _isWebRtcBlockingEnabled;
+  bool get isTrafficObfuscationEnabled => _isTrafficObfuscationEnabled;
+
   
   bool _isInitialized = false;
 

@@ -8,7 +8,7 @@ import '../models/vpn_config.dart';
 import 'free_vpn_provider.dart';
 
 /// Built-in VPN servers management service
-/// Automatically loads and manages pre-configured free VPN servers
+/// Supports real VPS WireGuard servers (instant connect) and WARP fallback.
 class BuiltInServerService {
   static final BuiltInServerService _instance = BuiltInServerService._internal();
   factory BuiltInServerService() => _instance;
@@ -17,8 +17,14 @@ class BuiltInServerService {
   final Logger _logger = Logger();
   final FreeVpnProvider _freeVpnProvider = FreeVpnProvider();
   
+  /// Primary servers (real VPS when configured)
   List<BuiltInServer> _servers = [];
+  /// Fallback servers (WARP endpoints)
+  List<BuiltInServer> _fallbackServers = [];
   Position? _userLocation;
+  
+  /// Track last used server index for round-robin rotation
+  int _lastUsedIndex = -1;
 
   /// Load built-in servers from assets
   Future<List<BuiltInServer>> loadBuiltInServers() async {
@@ -35,7 +41,34 @@ class BuiltInServerService {
           .map((json) => BuiltInServer.fromJson(json))
           .toList();
       
-      _logger.i('Loaded ${_servers.length} built-in servers');
+      // Load fallback servers (WARP endpoints)
+      final List<dynamic>? fallbackList = jsonData['fallback_servers'];
+      if (fallbackList != null) {
+        _fallbackServers = fallbackList
+            .map((json) => BuiltInServer.fromJson(json))
+            .toList();
+      }
+
+      // Filter out servers with placeholder IPs (not yet configured)
+      final configured = _servers.where((s) => 
+          !s.serverAddress.startsWith('YOUR_')).toList();
+      final unconfigured = _servers.length - configured.length;
+      
+      if (unconfigured > 0) {
+        _logger.w('$unconfigured servers have placeholder IPs — skipped');
+      }
+      
+      // Use only configured real servers; if none, fall back to WARP
+      if (configured.isEmpty) {
+        _logger.w('No real VPS servers configured, using WARP fallback servers');
+        _servers = _fallbackServers;
+      } else {
+        _servers = configured;
+      }
+      
+      _logger.i('Loaded ${_servers.length} servers (${_servers.where((s) => s.isRealVps).length} real VPS, '
+          '${_servers.where((s) => !s.isRealVps).length} WARP, '
+          '${_fallbackServers.length} fallback)');
       return _servers;
       
     } catch (e, stack) {
@@ -108,41 +141,49 @@ class BuiltInServerService {
         a.loadPercentage < b.loadPercentage ? a : b);
   }
 
-  /// Generate VPN configuration for a built-in server
+  /// Generate VPN configuration for a built-in server.
+  /// - Real VPS servers: builds config instantly from embedded keys (no API call).
+  /// - WARP servers: calls Cloudflare registration API for key generation.
   Future<VpnConfig?> generateConfigForServer(BuiltInServer server) async {
     try {
-      _logger.i('Generating configuration for server: ${server.name}');
+      _logger.i('Generating configuration for server: ${server.name} '
+          '(endpoint: ${server.serverAddress}:${server.port}, '
+          'realVPS: ${server.isRealVps})');
       
-      // Handle auto-generation for specific providers
-      if (server.id.contains('cloudflare') && server.id.contains('auto')) {
-        // Use Cloudflare WARP auto-generation
-        final warpConfig = await _freeVpnProvider.generateWarpConfig();
-        if (warpConfig != null) {
-          return warpConfig.copyWith(
-            name: server.name,
-            metadata: {
-              'server_id': server.id,
-              'country': server.country,
-              'city': server.city,
-              'provider': 'cloudflare',
-              'auto_generated': true,
-            },
-          );
-        }
+      // ---- Real VPS: instant config from embedded keys ----
+      if (server.isRealVps) {
+        final config = server.toVpnConfig();
+        _logger.i('Real VPS config ready: ${server.name} '
+            '(${server.country}, ${server.city})');
+        return config;
+      }
+      
+      // ---- WARP: needs API registration for keys ----
+      final serverEndpoint = '${server.serverAddress}:${server.port}';
+      
+      final warpConfig = await _freeVpnProvider.generateWarpConfig(
+        overrideEndpoint: serverEndpoint,
+      );
+      if (warpConfig != null) {
+        return warpConfig.copyWith(
+          id: server.id,
+          name: server.name,
+          serverAddress: server.serverAddress,
+          port: server.port,
+          endpoint: serverEndpoint,
+          metadata: {
+            'server_id': server.id,
+            'country': server.country,
+            'city': server.city,
+            'provider': 'cloudflare_warp',
+            'auto_generated': true,
+            'is_real_vps': false,
+          },
+        );
       }
 
-      // For other providers, convert built-in server to VPN config
-      final config = server.toVpnConfig().copyWith(
-        metadata: {
-          'server_id': server.id,
-          'country': server.country, 
-          'city': server.city,
-          'provider': server.id.split('-').first,
-        },
-      );
-
-      _logger.i('Generated configuration for ${server.name}');
-      return config;
+      _logger.w('Config generation failed for ${server.name}');
+      return null;
       
     } catch (e, stack) {
       _logger.e('Failed to generate config for server ${server.name}', 
@@ -151,31 +192,76 @@ class BuiltInServerService {
     }
   }
 
-  /// Auto-select best server for user
+  /// Auto-select best server — uses round-robin for real VPS (ensures IP changes)
+  /// and random for WARP (diversity attempt within anycast limitation).
+  ///
+  /// If real VPS servers exist → pick the next one in rotation (guaranteed different IP).
+  /// If only WARP → shuffle randomly (best effort).
+  /// Falls back to WARP fallback_servers if primary list exhausted.
   Future<VpnConfig?> autoSelectBestServer() async {
     try {
-      _logger.i('Auto-selecting best VPN server...');
+      _logger.i('Auto-selecting server...');
       
-      // First try to get recommended servers by distance
-      final recommended = await getRecommendedServers(limit: 3);
+      if (_servers.isEmpty) {
+        await loadBuiltInServers();
+      }
       
-      if (recommended.isNotEmpty) {
-        // Try to generate config for the best server
-        for (final server in recommended) {
+      if (_servers.isEmpty) {
+        _logger.w('No servers available');
+        return null;
+      }
+      
+      // Separate real VPS from WARP servers
+      final realVps = _servers.where((s) => s.isRealVps).toList();
+      
+      if (realVps.isNotEmpty) {
+        // Round-robin across real VPS servers for guaranteed IP diversity
+        _lastUsedIndex = (_lastUsedIndex + 1) % realVps.length;
+        final server = realVps[_lastUsedIndex];
+        
+        final config = await generateConfigForServer(server);
+        if (config != null) {
+          _logger.i('Selected real VPS: ${server.name} '
+              '(${server.country}, rotation #${_lastUsedIndex})');
+          return config;
+        }
+        _logger.w('Real VPS ${server.name} failed, trying others...');
+        
+        // Try remaining real VPS servers
+        for (int i = 0; i < realVps.length; i++) {
+          if (i == _lastUsedIndex) continue;
+          final fallbackServer = realVps[i];
+          final fallbackConfig = await generateConfigForServer(fallbackServer);
+          if (fallbackConfig != null) {
+            _lastUsedIndex = i;
+            _logger.i('Selected alternate VPS: ${fallbackServer.name}');
+            return fallbackConfig;
+          }
+        }
+      }
+      
+      // No real VPS available — use WARP servers (random shuffle)
+      final warpServers = _servers.where((s) => !s.isRealVps).toList();
+      if (warpServers.isNotEmpty) {
+        warpServers.shuffle(Random());
+        for (final server in warpServers) {
           final config = await generateConfigForServer(server);
           if (config != null) {
-            _logger.i('Auto-selected server: ${server.name}');
+            _logger.i('Selected WARP server: ${server.name}');
             return config;
           }
         }
       }
-
-      // Fallback: try any available server
-      for (final server in _servers) {
-        final config = await generateConfigForServer(server);
-        if (config != null) {
-          _logger.i('Fallback selected server: ${server.name}');
-          return config;
+      
+      // Last resort: try fallback WARP servers
+      if (_fallbackServers.isNotEmpty) {
+        _logger.w('Primary servers exhausted, trying WARP fallbacks...');
+        for (final server in _fallbackServers) {
+          final config = await generateConfigForServer(server);
+          if (config != null) {
+            _logger.i('Using WARP fallback: ${server.name}');
+            return config;
+          }
         }
       }
 
@@ -187,6 +273,12 @@ class BuiltInServerService {
       return null;
     }
   }
+  
+  /// Check if we have real VPS servers configured
+  bool get hasRealVpsServers => _servers.any((s) => s.isRealVps);
+  
+  /// Get real VPS server count
+  int get realVpsCount => _servers.where((s) => s.isRealVps).length;
 
   /// Get multiple free VPN configurations
   Future<List<VpnConfig>> getMultipleFreeConfigs({int limit = 5}) async {
@@ -231,7 +323,7 @@ class BuiltInServerService {
       final change = random.nextInt(21) - 10; // -10 to +10
       final newLoad = (currentLoad + change).clamp(10, 90);
       
-      // Create updated server (immutable)
+      // Create updated server (immutable) preserving VPS fields
       _servers[i] = BuiltInServer(
         id: _servers[i].id,
         name: _servers[i].name,
@@ -247,6 +339,12 @@ class BuiltInServerService {
         flagEmoji: _servers[i].flagEmoji,
         isRecommended: _servers[i].isRecommended,
         loadPercentage: newLoad,
+        publicKey: _servers[i].publicKey,
+        clientPrivateKey: _servers[i].clientPrivateKey,
+        clientAddress: _servers[i].clientAddress,
+        presharedKey: _servers[i].presharedKey,
+        dns: _servers[i].dns,
+        provider: _servers[i].provider,
       );
     }
     
@@ -254,11 +352,16 @@ class BuiltInServerService {
   }
 
   /// Get user location for distance calculation
+  /// Uses cached location if available, with generous timeout and fallback
   Future<void> _updateUserLocation() async {
+    // Use cached location if we already have one (avoid repeated requests)
+    if (_userLocation != null) return;
+    
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _logger.w('Location services are disabled');
+        _logger.w('Location services disabled, using last known or default');
+        await _tryLastKnownLocation();
         return;
       }
 
@@ -266,26 +369,73 @@ class BuiltInServerService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          _logger.w('Location permission denied');
+          _logger.w('Location permission denied, using default location');
+          _useDefaultLocation();
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _logger.w('Location permissions permanently denied');
+        _logger.w('Location permissions permanently denied, using default');
+        _useDefaultLocation();
         return;
       }
 
+      // Try to get last known position first (instant, no timeout)
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          _userLocation = lastKnown;
+          _logger.d('Using last known location: ${lastKnown.latitude}, ${lastKnown.longitude}');
+          return;
+        }
+      } catch (_) {}
+
+      // If no cached location, get current with generous timeout
       _userLocation = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
-        timeLimit: Duration(seconds: 3),
+        timeLimit: Duration(seconds: 15),
       );
       
       _logger.d('Updated user location: ${_userLocation?.latitude}, ${_userLocation?.longitude}');
       
     } catch (e, stack) {
-      _logger.w('Failed to get user location', error: e, stackTrace: stack);
+      _logger.w('Failed to get user location, using default', error: e, stackTrace: stack);
+      _useDefaultLocation();
     }
+  }
+
+  /// Try to get last known location as fallback
+  Future<void> _tryLastKnownLocation() async {
+    try {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        _userLocation = lastKnown;
+        _logger.d('Using last known location: ${lastKnown.latitude}, ${lastKnown.longitude}');
+        return;
+      }
+    } catch (_) {}
+    _useDefaultLocation();
+  }
+
+  /// Use a default location (India/Mumbai) when geolocation is unavailable
+  /// This ensures servers are at least sorted by some reference point
+  void _useDefaultLocation() {
+    if (_userLocation != null) return; // Don't override if we already have one
+    // Default to India (most users)
+    _userLocation = Position(
+      latitude: 20.5937,
+      longitude: 78.9629,
+      accuracy: 0,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+      timestamp: DateTime.now(),
+    );
+    _logger.d('Using default location (India) for server sorting');
   }
 
   /// Search servers by name or country
@@ -321,41 +471,4 @@ class BuiltInServerService {
   }
 }
 
-/// Extension to add copyWith method to VpnConfig
-extension VpnConfigCopyWith on VpnConfig {
-  VpnConfig copyWith({
-    String? id,
-    String? name,
-    String? serverAddress,
-    int? port,
-    String? privateKey,
-    String? publicKey,
-    String? presharedKey,
-    List<String>? allowedIPs,
-    List<String>? dnsServers,
-    int? mtu,
-    String? endpoint,
-    DateTime? createdAt,
-    DateTime? lastUsedAt,
-    bool? isActive,
-    Map<String, dynamic>? metadata,
-  }) {
-    return VpnConfig(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      serverAddress: serverAddress ?? this.serverAddress,
-      port: port ?? this.port,
-      privateKey: privateKey ?? this.privateKey,
-      publicKey: publicKey ?? this.publicKey,
-      presharedKey: presharedKey ?? this.presharedKey,
-      allowedIPs: allowedIPs ?? this.allowedIPs,
-      dnsServers: dnsServers ?? this.dnsServers,  
-      mtu: mtu ?? this.mtu,
-      endpoint: endpoint ?? this.endpoint,
-      createdAt: createdAt ?? this.createdAt,
-      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
-      isActive: isActive ?? this.isActive,
-      metadata: metadata ?? this.metadata,
-    );
-  }
-}
+// VpnConfig.copyWith is now defined in the VpnConfig class itself (vpn_config.dart)

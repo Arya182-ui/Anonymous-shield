@@ -19,25 +19,55 @@ class UserLocationNotifier extends StateNotifier<Position?> {
   Future<void> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        // Try last known as fallback
+        await _tryLastKnown();
+        return;
+      }
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
+        if (permission == LocationPermission.denied) {
+          await _tryLastKnown();
+          return;
+        }
       }
 
-      if (permission == LocationPermission.deniedForever) return;
+      if (permission == LocationPermission.deniedForever) {
+        await _tryLastKnown();
+        return;
+      }
 
+      // Try last known first (instant, no network needed)
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          state = lastKnown;
+        }
+      } catch (_) {}
+
+      // Then get fresh position with generous timeout
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
-        timeLimit: Duration(seconds: 5),
+        timeLimit: Duration(seconds: 15),
       );
       
       state = position;
     } catch (e) {
-      // Location failed, use fallback
-      state = null;
+      // Location failed, try last known as fallback
+      await _tryLastKnown();
+    }
+  }
+
+  Future<void> _tryLastKnown() async {
+    try {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        state = lastKnown;
+      }
+    } catch (_) {
+      // Complete failure - state stays null
     }
   }
 
