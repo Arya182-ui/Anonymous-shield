@@ -8,6 +8,20 @@
 [![Privacy](https://img.shields.io/badge/Privacy-Maximum-00C853)](https://github.com)
 [![Anonymous](https://img.shields.io/badge/Anonymity-NSA--Proof-E91E63)](https://github.com)
 
+
+---
+
+<div align="center">
+  <p><strong>🔒 Archived on 20 february 2026</strong></p>
+  <p>
+    This project is no longer under active development.<br>
+    The repository remains available for reference and reuse.<br>
+    For questions or collaboration, please contact the maintainer.
+  </p>
+</div>
+
+---
+
 ## 🎯 Revolutionary Concept
 
 This isn't just another VPN app - it's a **next-generation anonymous traffic controller** with built-in free servers and military-grade privacy features. Unlike traditional VPNs that offer single-hop encryption, this app provides **multi-layer anonymity chains** making you virtually untraceable.
