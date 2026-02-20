@@ -12,7 +12,7 @@
 ---
 
 <div align="center">
-  <p><strong>🔒 Archived on 20 february 2026</strong></p>
+  <p><strong> Archived on 20 february 2026</strong></p>
   <p>
     This project is no longer under active development.<br>
     The repository remains available for reference and reuse.<br>
@@ -28,11 +28,11 @@ This isn't just another VPN app - it's a **next-generation anonymous traffic con
 
 ### 🔥 Why This App is Superior:
 - 🥷 **Built-in Anonymous Servers** - No manual configuration needed
-- 🚀 **One-Click Maximum Anonymity** - Instant 5+ hop protection  
+-  **One-Click Maximum Anonymity** - Instant 5+ hop protection  
 - 🛡️ **Zero Logging Architecture** - Mathematically impossible to track
 - ⚡ **Auto Server Rotation** - Changes identity every 10 minutes
 - 🌐 **Multiple Free Providers** - Cloudflare WARP, ProtonVPN, Windscribe, etc.
-- 🔒 **Military-Grade Obfuscation** - Traffic looks completely normal
+-  **Military-Grade Obfuscation** - Traffic looks completely normal
 - 👻 **Ghost Mode** - NSA-level anonymity protection
 
 ## 🏗️ Advanced Architecture
@@ -71,13 +71,13 @@ This isn't just another VPN app - it's a **next-generation anonymous traffic con
 - **TrafficObfuscator**: Makes VPN traffic indistinguishable from normal web browsing
 - **RotationScheduler**: Time-based identity changes for maximum anonymity
 
-## 🚀 Advanced Features
+##  Advanced Features
 
 ### 🥷 Anonymous Modes
 - **👻 Ghost Mode**: 5+ hop proxy chains for maximum anonymity
 - **🥷 Stealth Mode**: Advanced traffic obfuscation bypasses any censorship  
 - **⚡ Turbo Mode**: 2-3 hops for balanced speed and privacy
-- **🔒 Paranoid Mode**: NSA-proof anonymity with random exit nodes
+- ** Paranoid Mode**: NSA-proof anonymity with random exit nodes
 
 ### 🌐 Built-in Free Servers
 - **Cloudflare WARP**: Unlimited free VPN with automatic key generation
@@ -111,30 +111,41 @@ This isn't just another VPN app - it's a **next-generation anonymous traffic con
 
 ## 📱 App Screenshots
 
-### Starter Screen
-Experience the simple, clean interface on first launch with one-click anonymous connection.
-
-![Starter App](assets/Demo_image/startter_app.jpeg)
-
-### Unprotected Connection Warning
-Get real-time alerts when your device isn't protected by the VPN.
-
-![Unprotected Screen](assets/Demo_image/Unprocted_screen.jpeg)
-
-### Connection Status
-Monitor your active VPN connection and real-time statistics.
-
-![Connection Status](assets/Demo_image/Connection_Status.jpeg)
-
-### Connected State
-View detailed connection information when securely connected.
-
-![Connected](assets/Demo_image/Connected.jpeg)
-
-### Server Selection
-Choose from built-in anonymous servers with one tap.
-
-![Server Image](assets/Demo_image/Server_image.jpeg)
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="50%">
+        <p><strong> Starter Screen</strong></p>
+        <img src="assets/Demo_image/startter_app.jpeg" width="280" alt="Starter App"/>
+        <p><small>One-click anonymous connection</small></p>
+      </td>
+      <td align="center" width="50%">
+        <p><strong> Unprotected Warning</strong></p>
+        <img src="assets/Demo_image/Unprocted_screen.jpeg" width="280" alt="Unprotected Screen"/>
+        <p><small>Real-time protection alerts</small></p>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="50%">
+        <p><strong> Connection Status</strong></p>
+        <img src="assets/Demo_image/Connection_Status.jpeg" width="280" alt="Connection Status"/>
+        <p><small>Real-time statistics & monitoring</small></p>
+      </td>
+      <td align="center" width="50%">
+        <p><strong> Connected State</strong></p>
+        <img src="assets/Demo_image/Connected.jpeg" width="280" alt="Connected"/>
+        <p><small>Active connection details</small></p>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" colspan="2">
+        <p><strong>🌐 Server Selection</strong></p>
+        <img src="assets/Demo_image/Server_image.jpeg" width="280" alt="Server Image"/>
+        <p><small>Built-in anonymous servers with one tap</small></p>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ### Enhanced Project Structure
 
@@ -221,7 +232,7 @@ flutter build apk --release
 3. **Choose Ghost Mode** - Activate 5+ hop proxy chains for maximum anonymity
 4. **Auto-Rotation Enabled** - Server changes every 10 minutes automatically
 
-## 🔒 Superior Anonymity vs Normal VPNs
+##  Superior Anonymity vs Normal VPNs
 
 | Feature | Normal Commercial VPNs | Anonymous VPN Controller |
 |---------|------------------------|-------------------------|
@@ -259,7 +270,7 @@ flutter build apk --release
 - **No Session Logs**: Connection history automatically deleted every 24 hours
 - **No IP Correlation**: Multi-hop chains make traffic analysis mathematically impossible
 
-### 🔒 Military-Grade Protection
+###  Military-Grade Protection
 - **Perfect Forward Secrecy**: Each session uses unique, ephemeral encryption keys
 - **AES-256 Encryption**: All local storage encrypted with device hardware keystore
 - **DNS-over-HTTPS**: All DNS queries encrypted and routed through privacy-focused resolvers
