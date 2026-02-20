@@ -8,6 +8,20 @@
 [![Privacy](https://img.shields.io/badge/Privacy-Maximum-00C853)](https://github.com)
 [![Anonymous](https://img.shields.io/badge/Anonymity-NSA--Proof-E91E63)](https://github.com)
 
+
+---
+
+<div align="center">
+  <p><strong>🔒 Archived on 20 february 2026</strong></p>
+  <p>
+    This project is no longer under active development.<br>
+    The repository remains available for reference and reuse.<br>
+    For questions or collaboration, please contact the maintainer.
+  </p>
+</div>
+
+---
+
 ## 🎯 Revolutionary Concept
 
 This isn't just another VPN app - it's a **next-generation anonymous traffic controller** with built-in free servers and military-grade privacy features. Unlike traditional VPNs that offer single-hop encryption, this app provides **multi-layer anonymity chains** making you virtually untraceable.
@@ -94,6 +108,33 @@ This isn't just another VPN app - it's a **next-generation anonymous traffic con
 - **IPv6 Leak Protection**: Blocks all IPv6 traffic leaks
 - **WebRTC Blocking**: Prevents IP address leaks through browsers
 - **Time-based Rotation**: Automatically changes identity periodically
+
+## 📱 App Screenshots
+
+### Starter Screen
+Experience the simple, clean interface on first launch with one-click anonymous connection.
+
+![Starter App](assets/Demo_image/startter_app.jpeg)
+
+### Unprotected Connection Warning
+Get real-time alerts when your device isn't protected by the VPN.
+
+![Unprotected Screen](assets/Demo_image/Unprocted_screen.jpeg)
+
+### Connection Status
+Monitor your active VPN connection and real-time statistics.
+
+![Connection Status](assets/Demo_image/Connection_Status.jpeg)
+
+### Connected State
+View detailed connection information when securely connected.
+
+![Connected](assets/Demo_image/Connected.jpeg)
+
+### Server Selection
+Choose from built-in anonymous servers with one tap.
+
+![Server Image](assets/Demo_image/Server_image.jpeg)
 
 ### Enhanced Project Structure
 
